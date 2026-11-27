@@ -13,6 +13,11 @@ import {
   resolveFullSongViaBackend,
   searchMusicViaBackend,
 } from './cloudApi';
+import {
+  fetchNativeRecommendations,
+  isNativeAndroidPlaybackAvailable,
+  searchNativeCatalog,
+} from './nativeMusicBridge';
 
 export interface PublicApiEntry {
   name: string;
@@ -218,6 +223,23 @@ export async function resolveFullSongTrack(
 ): Promise<Track> {
   if (track.streamType === 'full' || (track.streamType === 'youtube' && track.youtubeVideoId)) {
     return track;
+  }
+
+  // 0. Native Android APK resolves full YouTube Music tracks directly without API keys
+  if (isNativeAndroidPlaybackAvailable()) {
+    const nativeHits = await searchNativeCatalog(
+      `${track.artist} ${track.title} official audio`,
+      3,
+    );
+    if (nativeHits[0]?.youtubeVideoId) {
+      return {
+        ...track,
+        youtubeVideoId: nativeHits[0].youtubeVideoId,
+        streamType: 'youtube',
+        durationSec: nativeHits[0].durationSec || track.durationSec,
+        artworkUrl: track.artworkUrl || nativeHits[0].artworkUrl,
+      };
+    }
   }
 
   // 1. Try Next.js server resolver (handles server-side YOUTUBE_API_KEY cleanly)
@@ -479,9 +501,20 @@ export async function searchAllMusic(
   const trimmed = query.trim();
   if (!trimmed) return SEED_TRACKS;
 
-  const backendTracks = await searchMusicViaBackend(trimmed, fullOnly, vault);
+  const nativePromise = isNativeAndroidPlaybackAvailable()
+    ? searchNativeCatalog(trimmed, 12)
+    : Promise.resolve<Track[]>([]);
+
+  const backendPromise = searchMusicViaBackend(trimmed, fullOnly, vault);
+
+  const [nativeTracks, backendTracks] = await Promise.all([nativePromise, backendPromise]);
+  if (nativeTracks.length > 0 && (!backendTracks || backendTracks.length === 0)) {
+    return mergeAndDeduplicateTracks([nativeTracks], fullOnly);
+  }
   if (backendTracks && backendTracks.length > 0) {
-    return backendTracks;
+    return nativeTracks.length > 0
+      ? mergeAndDeduplicateTracks([nativeTracks, backendTracks], fullOnly)
+      : backendTracks;
   }
 
   const [ytTracks, audiusTracks, jamendoTracks, itunesTracks] = await Promise.all([
@@ -492,7 +525,7 @@ export async function searchAllMusic(
   ]);
 
   const merged = mergeAndDeduplicateTracks(
-    [ytTracks, audiusTracks, jamendoTracks, itunesTracks],
+    [nativeTracks, ytTracks, audiusTracks, jamendoTracks, itunesTracks],
     fullOnly,
   );
   if (merged.length > 0) return merged;
@@ -524,7 +557,10 @@ export async function fetchDiscoveryTracks(
 ): Promise<Track[]> {
   const query = MOOD_QUERY_MAP[mood] || MOOD_QUERY_MAP.all;
 
-  const [ytTracks, audiusTrending, jamendo, itunes, freshLb] = await Promise.all([
+  const [nativeTracks, ytTracks, audiusTrending, jamendo, itunes, freshLb] = await Promise.all([
+    isNativeAndroidPlaybackAvailable()
+      ? fetchNativeRecommendations({ mood, limit: 14 })
+      : Promise.resolve<Track[]>([]),
     searchYouTubeDirect(query, vault.youtubeApiKey, 8),
     fetchAudiusTrending(12),
     searchJamendo(query, vault.jamendoClientId, 8),
@@ -537,7 +573,7 @@ export async function fetchDiscoveryTracks(
     : [];
 
   return mergeAndDeduplicateTracks(
-    [ytTracks, audiusTrending, jamendo, itunes, lbLookup, SEED_TRACKS],
+    [nativeTracks, ytTracks, audiusTrending, jamendo, itunes, lbLookup, SEED_TRACKS],
     fullOnly,
   );
 }
@@ -550,15 +586,31 @@ export async function fetchPersonalizedRecommendations(
 ): Promise<Track[]> {
   const backendRecs = await recommendViaBackend(seedTrack.artist, seedTrack.title, vault);
 
-  const [lastfmQueries, tastediveArtists, ytMatches, audiusMatches, jamendoMatches, genreTracks] =
-    await Promise.all([
-      fetchLastFmSimilarNames(seedTrack, vault.lastfmApiKey),
-      fetchTasteDiveSimilarArtists(seedTrack.artist, vault.tastediveApiKey),
-      searchYouTubeDirect(`${seedTrack.artist} ${seedTrack.title} mix`, vault.youtubeApiKey, 6),
-      searchAudius(seedTrack.genres[0] ?? seedTrack.artist, 8),
-      searchJamendo(seedTrack.genres[0] ?? 'chill', vault.jamendoClientId, 8),
-      fullOnly ? Promise.resolve([]) : searchItunes(`${seedTrack.genres[0] ?? 'electronic'} ${seedTrack.artist}`, 10),
-    ]);
+  const [
+    nativeRecs,
+    lastfmQueries,
+    tastediveArtists,
+    ytMatches,
+    audiusMatches,
+    jamendoMatches,
+    genreTracks,
+  ] = await Promise.all([
+    isNativeAndroidPlaybackAvailable()
+      ? fetchNativeRecommendations({
+          videoId: seedTrack.youtubeVideoId,
+          artist: seedTrack.artist,
+          title: seedTrack.title,
+          mood,
+          limit: 16,
+        })
+      : Promise.resolve<Track[]>([]),
+    fetchLastFmSimilarNames(seedTrack, vault.lastfmApiKey),
+    fetchTasteDiveSimilarArtists(seedTrack.artist, vault.tastediveApiKey),
+    searchYouTubeDirect(`${seedTrack.artist} ${seedTrack.title} mix`, vault.youtubeApiKey, 6),
+    searchAudius(seedTrack.genres[0] ?? seedTrack.artist, 8),
+    searchJamendo(seedTrack.genres[0] ?? 'chill', vault.jamendoClientId, 8),
+    fullOnly ? Promise.resolve([]) : searchItunes(`${seedTrack.genres[0] ?? 'electronic'} ${seedTrack.artist}`, 10),
+  ]);
 
   const extraQueries = [...lastfmQueries.slice(0, 2), ...tastediveArtists.slice(0, 2)];
   const extraResults = await Promise.all(
@@ -569,6 +621,7 @@ export async function fetchPersonalizedRecommendations(
 
   return mergeAndDeduplicateTracks(
     [
+      nativeRecs,
       backendRecs ?? [],
       ytMatches,
       audiusMatches,
@@ -634,6 +687,26 @@ export async function fetchLyrics(artist: string, title: string): Promise<Lyrics
       source: 'lyricsovh',
     };
   }
+
+  const lrcUrl =
+    `https://lrclib.net/api/get?artist_name=${encodeURIComponent(artist)}` +
+    `&track_name=${encodeURIComponent(cleanTitle)}`;
+  const lrc = await fetchJsonWithTimeout<{ plainLyrics?: string; syncedLyrics?: string }>(
+    lrcUrl,
+    5500,
+  );
+  const resolvedLrc =
+    lrc?.plainLyrics?.trim() ||
+    lrc?.syncedLyrics?.replace(/\[\d{2}:\d{2}(?:\.\d{2,3})?\]\s*/g, '').trim();
+  if (resolvedLrc && resolvedLrc.length > 0) {
+    return {
+      artist,
+      title,
+      lyrics: resolvedLrc,
+      source: 'lrclib',
+    };
+  }
+
   return {
     artist,
     title,

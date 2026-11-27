@@ -10,6 +10,10 @@ import {
   PUBLIC_MUSIC_API_DIRECTORY,
   searchAllMusic,
 } from './musicApis';
+import {
+  __setNativeBridgeAdapterForTests,
+  type NativeMusicPluginAdapter,
+} from './nativeMusicBridge';
 import type { ApiVault, Track } from '../types/music';
 
 const emptyVault: ApiVault = {
@@ -21,13 +25,14 @@ const emptyVault: ApiVault = {
   theAudioDbApiKey: '123',
   geniusAccessToken: '',
   spotifyClientId: '',
-  githubRepoUrl: 'https://github.com/xani13/rivibe',
+  githubRepoUrl: 'https://github.com/Xani113/Rivibe',
   backendUrl: '',
 };
 
 describe('musicApis (public-apis#music adapters)', () => {
   beforeEach(() => {
     localStorage.clear();
+    __setNativeBridgeAdapterForTests(null);
   });
 
   it('documents the public-apis#music catalog entries accurately', () => {
@@ -142,5 +147,70 @@ describe('musicApis (public-apis#music adapters)', () => {
     const spotlight = await fetchArtistSpotlight('Troye Sivan', emptyVault);
     expect(spotlight?.name).toBe('Troye Sivan');
     expect(spotlight?.genre).toBe('Synth-Pop');
+  });
+
+  it('uses native keyless Android search & LRCLIB fallback lyrics when available', async () => {
+    const mockAdapter: NativeMusicPluginAdapter = {
+      isNativeAndroid: () => true,
+      getCapabilities: async () => ({
+        nativeAvailable: true,
+        engine: 'media3-exoplayer+innertube',
+        innertube: true,
+        media3: true,
+      }),
+      searchCatalog: async () => ({
+        tracks: [
+          {
+            id: 'nativeYt1',
+            title: 'Midnight City',
+            artist: 'M83',
+            album: 'Hurry Up',
+            durationSec: 243,
+          },
+        ],
+      }),
+      getRecommendations: async () => ({ tracks: [] }),
+      resolveStream: async () => {
+        throw new Error('unused');
+      },
+      playTrack: async () => ({
+        trackId: 'yt-nativeYt1',
+        isPlaying: true,
+        currentTime: 0,
+        duration: 243,
+        isBuffering: false,
+      }),
+      pause: async () => {},
+      resume: async () => {},
+      seekTo: async () => {},
+      setVolume: async () => {},
+      stop: async () => {},
+      getPlaybackState: async () => ({
+        trackId: 'yt-nativeYt1',
+        isPlaying: false,
+        currentTime: 0,
+        duration: 243,
+        isBuffering: false,
+      }),
+      addListener: async () => ({ remove: async () => {} }),
+    };
+    __setNativeBridgeAdapterForTests(mockAdapter);
+
+    server.use(
+      http.get('https://api.lyrics.ovh/v1/:artist/:title', () => {
+        return new HttpResponse(null, { status: 404 });
+      }),
+      http.get('https://lrclib.net/api/get', () => {
+        return HttpResponse.json({
+          plainLyrics: 'Waiting in a car\nWaiting for a ride in the dark',
+        });
+      }),
+    );
+
+    const tracks = await searchAllMusic('M83 Midnight City', emptyVault);
+    expect(tracks.some((t) => t.youtubeVideoId === 'nativeYt1' && t.streamType === 'youtube')).toBe(true);
+
+    const lyrics = await fetchLyrics('M83', 'Midnight City');
+    expect(lyrics.lyrics).toContain('Waiting in a car');
   });
 });

@@ -13,6 +13,7 @@ import {
 import { usePlayer } from '../context/PlayerContext';
 import { useLibrary } from '../context/LibraryContext';
 import { formatDuration } from '../utils/formatTime';
+import { isNativeAndroidPlaybackAvailable } from '../services/nativeMusicBridge';
 
 interface FloatingPlayerProps {
   onOpenSheet: () => void;
@@ -42,6 +43,7 @@ export function FloatingPlayer({ onOpenSheet, onOpenApiVault }: FloatingPlayerPr
 
   const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
   const liked = currentTrack ? tasteProfile.likedTrackIds.includes(currentTrack.id) : false;
+  const nativeAndroid = isNativeAndroidPlaybackAvailable();
   const displayTitle = currentRadioStation?.name ?? currentTrack?.title ?? 'Select a Track';
   const displaySubtitle = currentRadioStation
     ? `Live Radio · ${currentRadioStation.country}`
@@ -55,13 +57,15 @@ export function FloatingPlayer({ onOpenSheet, onOpenApiVault }: FloatingPlayerPr
           className="mb-2 mx-auto w-fit max-w-full px-3.5 py-1.5 rounded-full bg-[rgba(28,22,18,0.92)] border border-[rgba(240,196,108,0.35)] text-xs text-[#fbf7f2] flex items-center gap-2 shadow-lg"
         >
           <span className="truncate">{playbackNotice}</span>
-          <button
-            type="button"
-            onClick={onOpenApiVault}
-            className="text-[#f0c46c] font-semibold shrink-0 underline"
-          >
-            API Keys
-          </button>
+          {!nativeAndroid ? (
+            <button
+              type="button"
+              onClick={onOpenApiVault}
+              className="text-[#f0c46c] font-semibold shrink-0 underline"
+            >
+              API Keys
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={clearNotice}
@@ -70,7 +74,7 @@ export function FloatingPlayer({ onOpenSheet, onOpenApiVault }: FloatingPlayerPr
             Dismiss
           </button>
         </div>
-      ) : currentTrack?.streamType === 'preview' && isPlaying && !currentRadioStation ? (
+      ) : !nativeAndroid && currentTrack?.streamType === 'preview' && isPlaying && !currentRadioStation ? (
         <div className="mb-1.5 mx-auto w-fit max-w-full px-3 py-1 rounded-full bg-[rgba(28,22,18,0.88)] border border-[rgba(255,244,230,0.18)] text-[11px] text-[rgba(247,239,230,0.82)] flex items-center gap-2">
           <span>30s iTunes preview</span>
           <button

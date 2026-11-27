@@ -93,7 +93,7 @@ export function createDefaultApiVault(): ApiVault {
     theAudioDbApiKey: import.meta.env.VITE_THEAUDIODB_API_KEY || '123',
     geniusAccessToken: import.meta.env.VITE_GENIUS_ACCESS_TOKEN ?? '',
     spotifyClientId: import.meta.env.VITE_SPOTIFY_CLIENT_ID ?? '',
-    githubRepoUrl: import.meta.env.VITE_GITHUB_REPO_URL || 'https://github.com/xani13/rivibe',
+    githubRepoUrl: import.meta.env.VITE_GITHUB_REPO_URL || 'https://github.com/Xani113/Rivibe',
     backendUrl: import.meta.env.VITE_API_BASE_URL ?? '',
   };
 }
@@ -127,7 +127,7 @@ export function resetVaultSecrets(): ApiVault {
     theAudioDbApiKey: '123',
     geniusAccessToken: '',
     spotifyClientId: '',
-    githubRepoUrl: 'https://github.com/xani13/rivibe',
+    githubRepoUrl: 'https://github.com/Xani113/Rivibe',
     backendUrl: '',
   };
   saveApiVault(clean);

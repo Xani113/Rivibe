@@ -8,6 +8,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
   pages: write
@@ -23,14 +27,18 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm --prefix backend ci
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+      - run: npm ci --prefer-offline --no-audit --no-fund
+      - run: npm --prefix backend ci --prefer-offline --no-audit --no-fund
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
         env:
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
+          VITE_GITHUB_REPO_URL: https://github.com/${{ github.repository }}
       - run: npm --prefix backend run build
       - uses: actions/upload-artifact@v4
         with:
@@ -39,7 +47,6 @@ jobs:
 
   build-android-apk:
     name: Build Android APK (Capacitor)
-    needs: verify-web
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -47,17 +54,23 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: package-lock.json
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
       - uses: android-actions/setup-android@v3
-      - run: npm ci
-      - run: npm run build
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-home-cache-cleanup: true
+      - run: npm ci --prefer-offline --no-audit --no-fund
+      - run: npx vite build
+        env:
+          VITE_GITHUB_REPO_URL: https://github.com/${{ github.repository }}
       - run: npx cap sync android
-      - name: Build Debug APK
+      - name: Run Android Unit Tests & Build Debug APK
         working-directory: android
-        run: ./gradlew assembleDebug
+        run: ./gradlew testDebugUnitTest assembleDebug --parallel --build-cache
       - name: Rename APK Artifact
         run: |
           mkdir -p release-apk
@@ -66,9 +79,18 @@ jobs:
         with:
           name: rivibe-android-apk
           path: release-apk/rivibe-android.apk
-      - name: Publish GitHub Release APK
-        if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
-        uses: softprops/action-gh-release@v2
+
+  publish-release:
+    name: Publish GitHub Release APK
+    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
+    needs: [verify-web, build-android-apk]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: rivibe-android-apk
+          path: release-apk/
+      - uses: softprops/action-gh-release@v2
         with:
           files: release-apk/rivibe-android.apk
           generate_release_notes: true

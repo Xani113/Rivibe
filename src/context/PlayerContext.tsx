@@ -18,6 +18,7 @@ import {
   searchAudius,
   searchItunes,
 } from '../services/musicApis';
+import { getNativeMusicPlugin } from '../services/nativeMusicBridge';
 import { buildTrackRadioQueue, rankRecommendations } from '../engine/vibeEngine';
 import { SEED_TRACKS } from '../services/seedCatalog';
 
@@ -72,6 +73,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const userInitiatedRef = useRef(false);
+  const activeNativeRef = useRef(false);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(() => SEED_TRACKS[0] ?? null);
   const [currentRadioStation, setCurrentRadioStation] = useState<RadioStation | null>(null);
   const [activeYoutubeVideoId, setActiveYoutubeVideoId] = useState<string | null>(null);
@@ -93,6 +95,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     currentTrack,
     queue,
     queueIndex,
+    isPlaying,
     infiniteRadio,
     catalog,
     tasteProfile,
@@ -103,6 +106,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     currentTrack,
     queue,
     queueIndex,
+    isPlaying,
     infiniteRadio,
     catalog,
     tasteProfile,
@@ -137,7 +141,90 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     async (track: Track) => {
       userInitiatedRef.current = true;
       const audio = getAudio();
+      const nativePlugin = getNativeMusicPlugin();
       let playableTrack = await resolveFullSongTrack(track, apiVault);
+
+      if (nativePlugin) {
+        if (!playableTrack.youtubeVideoId && !playableTrack.audioUrl) {
+          const audiusMatches = await searchAudius(`${playableTrack.artist} ${playableTrack.title}`, 3);
+          const fullMatch = audiusMatches.find((m) => Boolean(m.audioUrl));
+          if (fullMatch) {
+            playableTrack = {
+              ...playableTrack,
+              audioUrl: fullMatch.audioUrl,
+              streamType: 'full',
+              durationSec: fullMatch.durationSec || playableTrack.durationSec,
+            };
+          } else {
+            const matches = await searchItunes(`${playableTrack.artist} ${playableTrack.title}`, 3);
+            const found = matches.find((m) => Boolean(m.audioUrl));
+            if (found) {
+              playableTrack = {
+                ...playableTrack,
+                audioUrl: found.audioUrl,
+                streamType: found.streamType,
+              };
+            }
+          }
+        }
+
+        audio.pause();
+        registerTracks([playableTrack]);
+        setActiveYoutubeVideoId(null);
+        setYoutubeSeekTarget(null);
+        setCurrentTrack(playableTrack);
+        setCurrentRadioStation(null);
+        setCurrentTime(0);
+        setDuration(playableTrack.durationSec || 200);
+        setPlaybackNotice(null);
+
+        if (!playableTrack.youtubeVideoId && !playableTrack.audioUrl) {
+          activeNativeRef.current = false;
+          setIsPlaying(false);
+          setPlaybackNotice(`No playable stream found for "${playableTrack.title}" right now.`);
+          return;
+        }
+
+        activeNativeRef.current = true;
+        try {
+          const snap = await nativePlugin.playTrack({
+            trackId: playableTrack.id,
+            title: playableTrack.title,
+            artist: playableTrack.artist,
+            album: playableTrack.album,
+            artworkUrl: playableTrack.artworkUrl,
+            youtubeVideoId: playableTrack.youtubeVideoId,
+            audioUrl: playableTrack.audioUrl ?? undefined,
+            isLiveStream: false,
+          });
+          setIsPlaying(snap?.isPlaying ?? true);
+          if (snap?.duration && snap.duration > 0) setDuration(snap.duration);
+          return;
+        } catch (err) {
+          if (playableTrack.audioUrl) {
+            activeNativeRef.current = false;
+            audio.src = playableTrack.audioUrl;
+            audio.currentTime = 0;
+            try {
+              await audio.play();
+              setIsPlaying(true);
+              return;
+            } catch {
+              // fall through to notice
+            }
+          }
+          activeNativeRef.current = false;
+          setIsPlaying(false);
+          setPlaybackNotice(
+            err instanceof Error && err.message
+              ? err.message
+              : `Could not start native stream for "${playableTrack.title}".`,
+          );
+          return;
+        }
+      }
+
+      activeNativeRef.current = false;
 
       if (playableTrack.streamType === 'youtube' && playableTrack.youtubeVideoId) {
         audio.pause();
@@ -248,11 +335,36 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const playRadioStation = useCallback(
     async (station: RadioStation) => {
       const audio = getAudio();
+      const nativePlugin = getNativeMusicPlugin();
       setActiveYoutubeVideoId(null);
       setCurrentRadioStation(station);
       setPlaybackNotice(null);
       setCurrentTime(0);
       setDuration(0);
+
+      if (nativePlugin) {
+        audio.pause();
+        activeNativeRef.current = true;
+        try {
+          const snap = await nativePlugin.playTrack({
+            trackId: station.id,
+            title: station.name,
+            artist: `Live Radio · ${station.country}`,
+            album: 'Live Vibe Radio',
+            artworkUrl: station.favicon || undefined,
+            audioUrl: station.streamUrl,
+            isLiveStream: true,
+          });
+          setIsPlaying(snap?.isPlaying ?? true);
+        } catch {
+          activeNativeRef.current = false;
+          setIsPlaying(false);
+          setPlaybackNotice(`Could not start live stream for ${station.name}. Try another station.`);
+        }
+        return;
+      }
+
+      activeNativeRef.current = false;
       audio.src = station.streamUrl;
       try {
         await audio.play();
@@ -314,13 +426,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   );
 
   const prevTrack = useCallback(async () => {
+    const nativePlugin = activeNativeRef.current ? getNativeMusicPlugin() : null;
+    if (nativePlugin && currentTime > 3) {
+      await nativePlugin.seekTo({ positionSec: 0 });
+      setCurrentTime(0);
+      return;
+    }
     if (stateRef.current.activeYoutubeVideoId && currentTime > 3) {
       setYoutubeSeekTarget(0);
       setCurrentTime(0);
       return;
     }
     const audio = getAudio();
-    if (!stateRef.current.activeYoutubeVideoId && audio.currentTime > 3) {
+    if (!nativePlugin && !stateRef.current.activeYoutubeVideoId && audio.currentTime > 3) {
       audio.currentTime = 0;
       setCurrentTime(0);
       return;
@@ -336,6 +454,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [currentTime, getAudio, loadAudioSource, recordPlay]);
 
   const togglePlay = useCallback(async () => {
+    const nativePlugin = getNativeMusicPlugin();
+    if (activeNativeRef.current && nativePlugin) {
+      if (stateRef.current.isPlaying) {
+        await nativePlugin.pause();
+        setIsPlaying(false);
+      } else {
+        await nativePlugin.resume();
+        setIsPlaying(true);
+      }
+      return;
+    }
+
     if (stateRef.current.activeYoutubeVideoId) {
       setIsPlaying((prev) => !prev);
       return;
@@ -362,6 +492,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const seekTo = useCallback(
     (seconds: number) => {
       const bounded = Math.max(0, Math.min(seconds, duration || 30));
+      const nativePlugin = activeNativeRef.current ? getNativeMusicPlugin() : null;
+      if (nativePlugin) {
+        void nativePlugin.seekTo({ positionSec: bounded });
+        setCurrentTime(bounded);
+        return;
+      }
       if (stateRef.current.activeYoutubeVideoId) {
         setYoutubeSeekTarget(bounded);
         setCurrentTime(bounded);
@@ -379,6 +515,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const clamped = Math.max(0, Math.min(1, vol));
       const audio = getAudio();
       audio.volume = clamped;
+      const nextMuted = clamped > 0 && isMuted ? false : isMuted;
+      const nativePlugin = getNativeMusicPlugin();
+      if (nativePlugin && activeNativeRef.current) {
+        void nativePlugin.setVolume({ volume: clamped, muted: nextMuted });
+      }
       setVolumeState(clamped);
       if (clamped > 0 && isMuted) setIsMuted(false);
     },
@@ -387,12 +528,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const toggleMute = useCallback(() => {
     const audio = getAudio();
+    const nativePlugin = getNativeMusicPlugin();
     setIsMuted((prev) => {
       const next = !prev;
       audio.muted = next;
+      if (nativePlugin && activeNativeRef.current) {
+        void nativePlugin.setVolume({ volume, muted: next });
+      }
       return next;
     });
-  }, [getAudio]);
+  }, [getAudio, volume]);
 
   const clearNotice = useCallback(() => setPlaybackNotice(null), []);
 
@@ -451,7 +596,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       void nextTrack(false);
     };
     const onAudioError = () => {
-      if (stateRef.current.activeYoutubeVideoId) return;
+      if (stateRef.current.activeYoutubeVideoId || activeNativeRef.current) return;
       setIsPlaying(false);
       setPlaybackNotice('Audio stream unavailable on current source — try another track or add YouTube API key.');
     };
@@ -472,6 +617,51 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       audio.removeEventListener('error', onAudioError);
     };
   }, [getAudio, nextTrack, recordComplete]);
+
+  const nextTrackRef = useRef(nextTrack);
+  nextTrackRef.current = nextTrack;
+  const recordCompleteRef = useRef(recordComplete);
+  recordCompleteRef.current = recordComplete;
+
+  useEffect(() => {
+    const nativePlugin = getNativeMusicPlugin();
+    if (!nativePlugin) return;
+    let active = true;
+    const handles: Array<{ remove: () => Promise<void> }> = [];
+
+    void Promise.all([
+      nativePlugin.addListener('playbackState', (snap) => {
+        if (!active || !activeNativeRef.current) return;
+        setCurrentTime(snap.currentTime || 0);
+        if (snap.duration > 0) setDuration(snap.duration);
+        setIsPlaying(Boolean(snap.isPlaying));
+      }),
+      nativePlugin.addListener('playbackEnded', () => {
+        if (!active || !activeNativeRef.current) return;
+        const activeTrack = stateRef.current.currentTrack;
+        if (activeTrack) recordCompleteRef.current(activeTrack);
+        void nextTrackRef.current(false);
+      }),
+      nativePlugin.addListener('playbackError', (err) => {
+        if (!active || !activeNativeRef.current) return;
+        setIsPlaying(false);
+        setPlaybackNotice(err.message || 'Native stream unavailable — try another track.');
+      }),
+    ]).then((list) => {
+      if (!active) {
+        for (const h of list) void h.remove();
+      } else {
+        handles.push(...list);
+      }
+    });
+
+    return () => {
+      active = false;
+      for (const h of handles) {
+        void h.remove();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!('mediaSession' in navigator) || !currentTrack) return;

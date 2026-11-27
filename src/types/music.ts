@@ -162,5 +162,5 @@ export interface LyricsResult {
   artist: string;
   title: string;
   lyrics: string;
-  source: 'lyricsovh' | 'unavailable';
+  source: 'lyricsovh' | 'lrclib' | 'unavailable';
 }

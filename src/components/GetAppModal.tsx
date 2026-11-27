@@ -105,8 +105,8 @@ export function GetAppModal({ isOpen, githubRepoUrl, onClose }: GetAppModalProps
               </h3>
             </div>
             <p className="text-xs text-[rgba(247,239,230,0.72)] text-pretty">
-              Capacitor Android packaging + GitHub Actions workflow (`ci-and-release.yml`)
-              builds <code>rivibe-android.apk</code> automatically for Android phones.
+              Capacitor Android APK includes the built-in <strong>Native Media3 + Innertube Engine</strong> for
+              keyless full-length YouTube Music streaming, lock-screen controls, and background playback (built automatically by GitHub Actions).
             </p>
             <a
               href={releasesUrl}

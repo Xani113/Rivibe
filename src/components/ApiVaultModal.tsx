@@ -117,7 +117,7 @@ export function ApiVaultModal({
                 className="w-full px-3.5 py-2 rounded-xl bg-[rgba(18,14,11,0.45)] border border-[rgba(255,244,230,0.16)] text-xs text-[#fbf7f2]"
               />
               <span className="block text-[11px] text-[rgba(247,239,230,0.56)]">
-                Google has no standalone YouTube Music REST key — enabling YouTube Data API v3 in Google Cloud Console unlocks music search and full-length songs.
+                In Chrome web/PWA, adding a YouTube Data API v3 key unlocks YouTube IFrame full songs. In the Android APK, full-length YouTube Music works natively via Innertube + Media3 ExoPlayer with zero API keys.
               </span>
             </label>
 
