@@ -228,34 +228,9 @@ export function NavShell({
           />
           <span className="text-[15px] font-bold tracking-tight text-[#f4f5f7]">RiVibe</span>
         </div>
-
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            aria-label="Open playback queue"
-            onClick={onToggleQueue}
-            className={`rv-interactive-btn h-9 px-2.5 rounded-lg flex items-center gap-1.5 text-xs font-medium border ${
-              queueOpen
-                ? 'bg-[rgba(34,211,166,0.16)] border-[rgba(34,211,166,0.4)] text-[#22d3a6]'
-                : 'bg-[#121620] border-[rgba(255,255,255,0.09)] text-[#f4f5f7]'
-            }`}
-          >
-            <ListMusic className="w-3.5 h-3.5" aria-hidden="true" />
-            <span className="tabular-nums">{queueCount}</span>
-          </button>
-
-          <button
-            type="button"
-            aria-label="Settings"
-            onClick={onOpenSettings}
-            className="rv-interactive-btn w-9 h-9 rounded-lg bg-[#121620] border border-[rgba(255,255,255,0.09)] flex items-center justify-center text-[rgba(244,245,247,0.8)]"
-          >
-            <Settings className="w-4 h-4" aria-hidden="true" />
-          </button>
-        </div>
       </header>
 
-      {/* Mobile Portrait Bottom 3-Tab Bar */}
+      {/* Mobile Portrait Bottom 4-Tab Bar (Home · Search · Library · Settings) */}
       <nav
         aria-label="Mobile bottom navigation"
         className={`rv-mobile-bottom-nav md:hidden fixed bottom-0 left-0 right-0 z-30 h-14 bg-[#0b0e14]/95 backdrop-blur-xl border-t border-[rgba(255,255,255,0.08)] flex items-center px-2 transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
@@ -282,6 +257,15 @@ export function NavShell({
             </button>
           );
         })}
+        <button
+          type="button"
+          aria-label="Settings"
+          onClick={onOpenSettings}
+          className="rv-interactive-btn flex-1 h-11 rounded-lg flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium text-[rgba(244,245,247,0.58)] hover:text-[#f4f5f7]"
+        >
+          <Settings className="w-4 h-4" aria-hidden="true" />
+          <span>Settings</span>
+        </button>
       </nav>
     </>
   );

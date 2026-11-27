@@ -43,8 +43,8 @@ describe('RiVibe App UI, Navigation & Queue Workflow', () => {
       expect(screen.getByRole('status')).toHaveTextContent(/Added "Troye Horizon" to queue/i);
     });
 
-    // Open Queue Drawer, inspect summary header + duration, and use 3-dot action sheet to remove item
-    const queueBtn = screen.getByRole('button', { name: /toggle playback queue/i });
+    // Open Queue Drawer from sidebar, inspect summary header + duration, and use 3-dot action sheet to remove item
+    const queueBtn = screen.getAllByRole('button', { name: /open playback queue/i })[0]!;
     await user.click(queueBtn);
 
     const queueDialog = await screen.findByRole('dialog', { name: /playback queue/i });
@@ -212,20 +212,21 @@ describe('RiVibe App UI, Navigation & Queue Workflow', () => {
     await user.click(screen.getByRole('button', { name: /^create$/i }));
     expect((await screen.findAllByText('Night Drive')).length).toBeGreaterThanOrEqual(1);
 
-    // Open Now Playing sheet and inspect controls + Save popover + Lyrics + axe-core
+    // Open Now Playing sheet and inspect controls + Playlist menu (Save pill removed) + Lyrics + axe-core
     await user.click(screen.getByRole('button', { name: /open now playing details/i }));
     const studioDialog = await screen.findByRole('dialog', { name: /now playing studio/i });
 
     expect(within(studioDialog).getByRole('tab', { name: /up next/i })).toBeInTheDocument();
     expect(within(studioDialog).getByRole('button', { name: /build radio queue from track/i })).toBeInTheDocument();
+    expect(within(studioDialog).queryByRole('button', { name: /add current track to playlist/i })).not.toBeInTheDocument();
 
     const autoplayBtn = within(studioDialog).getByRole('button', { name: /autoplay/i });
     const initialPressed = autoplayBtn.getAttribute('aria-pressed');
     await user.click(autoplayBtn);
     expect(autoplayBtn.getAttribute('aria-pressed')).not.toBe(initialPressed);
 
-    await user.click(within(studioDialog).getByRole('button', { name: /add current track to playlist/i }));
-    expect(within(studioDialog).getByText(/save to playlist/i)).toBeInTheDocument();
+    await user.click(within(studioDialog).getByRole('button', { name: /playlist options/i }));
+    expect(within(studioDialog).getByText(/add to playlist/i)).toBeInTheDocument();
 
     await user.click(within(studioDialog).getByRole('tab', { name: /lyrics/i }));
     expect(await within(studioDialog).findByText(/Look at the stars/i)).toBeInTheDocument();
@@ -239,8 +240,13 @@ describe('RiVibe App UI, Navigation & Queue Workflow', () => {
 
     await user.click(within(studioDialog).getByRole('button', { name: /close now playing/i }));
 
-    const settingsBtn = screen.getAllByRole('button', { name: /^settings$/i })[0]!;
-    await user.click(settingsBtn);
+    // Confirm PlayerBar queue button was removed and bottom mobile nav places Settings right after Library
+    expect(screen.queryByRole('button', { name: /toggle playback queue/i })).not.toBeInTheDocument();
+    const bottomNav = screen.getByRole('navigation', { name: /mobile bottom navigation/i });
+    const navButtons = within(bottomNav).getAllByRole('button').map((btn) => btn.textContent?.trim());
+    expect(navButtons).toEqual(['Home', 'Search', 'Library', 'Settings']);
+
+    await user.click(within(bottomNav).getByRole('button', { name: /^settings$/i }));
     const settingsDialog = await screen.findByRole('dialog', { name: /rivibe settings/i });
     expect(within(settingsDialog).getByText(/Android APK Releases/i)).toBeInTheDocument();
     await user.click(within(settingsDialog).getByRole('button', { name: /close settings/i }));

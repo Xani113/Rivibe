@@ -88,6 +88,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const userInitiatedRef = useRef(false);
   const activeNativeRef = useRef(false);
+  const switchingTrackRef = useRef(false);
+  const playRequestSeqRef = useRef(0);
   const toastTimerRef = useRef<number | null>(null);
   const isRadioSessionRef = useRef(true);
   const topUpLockRef = useRef<{ trackId: string; ts: number }>({ trackId: '', ts: 0 });
@@ -209,6 +211,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [catalog, currentTrack, isPlaying]);
 
   const stopAllPlaybackHardware = useCallback(() => {
+    playRequestSeqRef.current += 1;
+    switchingTrackRef.current = false;
     const audio = getAudio();
     audio.pause();
     if (activeNativeRef.current) {
@@ -216,6 +220,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (nativePlugin) void nativePlugin.stop();
       activeNativeRef.current = false;
     }
+    stateRef.current.activeYoutubeVideoId = null;
     setActiveYoutubeVideoId(null);
     setYoutubeSeekTarget(null);
   }, [getAudio]);
@@ -223,13 +228,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const loadAudioSource = useCallback(
     async (track: Track): Promise<Track> => {
       userInitiatedRef.current = true;
+      const reqId = ++playRequestSeqRef.current;
+      switchingTrackRef.current = true;
       const audio = getAudio();
       const nativePlugin = getNativeMusicPlugin();
+
+      setPlaybackNotice(null);
+      stateRef.current.currentTrack = track;
+      setCurrentTrack(track);
+      setCurrentTime(0);
+      setDuration(track.durationSec || (track.streamType === 'preview' ? 30 : 200));
+      stateRef.current.isPlaying = true;
+      setIsPlaying(true);
+
       let playableTrack = await resolveFullSongTrack(track, apiVault);
+      if (playRequestSeqRef.current !== reqId) return playableTrack;
 
       if (nativePlugin) {
         if (!playableTrack.youtubeVideoId && !playableTrack.audioUrl) {
           const audiusMatches = await searchAudius(`${playableTrack.artist} ${playableTrack.title}`, 3);
+          if (playRequestSeqRef.current !== reqId) return playableTrack;
           const fullMatch = audiusMatches.find((m) => Boolean(m.audioUrl));
           if (fullMatch) {
             playableTrack = {
@@ -240,6 +258,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             };
           } else {
             const matches = await searchItunes(`${playableTrack.artist} ${playableTrack.title}`, 3);
+            if (playRequestSeqRef.current !== reqId) return playableTrack;
             const found = matches.find((m) => Boolean(m.audioUrl));
             if (found) {
               playableTrack = {
@@ -251,8 +270,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        audio.pause();
+        if (!audio.paused) audio.pause();
         registerTracks([playableTrack]);
+        stateRef.current.activeYoutubeVideoId = null;
         setActiveYoutubeVideoId(null);
         setYoutubeSeekTarget(null);
         stateRef.current.currentTrack = playableTrack;
@@ -263,6 +283,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
         if (!playableTrack.youtubeVideoId && !playableTrack.audioUrl) {
           activeNativeRef.current = false;
+          switchingTrackRef.current = false;
+          stateRef.current.isPlaying = false;
           setIsPlaying(false);
           setPlaybackNotice(`No playable stream found for "${playableTrack.title}".`);
           return playableTrack;
@@ -280,16 +302,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             audioUrl: playableTrack.audioUrl ?? undefined,
             isLiveStream: false,
           });
-          setIsPlaying(snap?.isPlaying ?? true);
+          if (playRequestSeqRef.current !== reqId) return playableTrack;
+          if (snap?.isPlaying) switchingTrackRef.current = false;
+          const playingNow = snap?.isPlaying ?? true;
+          stateRef.current.isPlaying = playingNow;
+          setIsPlaying(playingNow);
           if (snap?.duration && snap.duration > 0) setDuration(snap.duration);
           return playableTrack;
         } catch (err) {
+          if (playRequestSeqRef.current !== reqId) return playableTrack;
           if (playableTrack.audioUrl) {
             activeNativeRef.current = false;
             audio.src = playableTrack.audioUrl;
             audio.currentTime = 0;
             try {
               await audio.play();
+              if (playRequestSeqRef.current !== reqId) return playableTrack;
+              switchingTrackRef.current = false;
+              stateRef.current.isPlaying = true;
               setIsPlaying(true);
               return playableTrack;
             } catch {
@@ -297,6 +327,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             }
           }
           activeNativeRef.current = false;
+          switchingTrackRef.current = false;
+          stateRef.current.isPlaying = false;
           setIsPlaying(false);
           setPlaybackNotice(
             err instanceof Error && err.message
@@ -310,21 +342,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       activeNativeRef.current = false;
 
       if (playableTrack.streamType === 'youtube' && playableTrack.youtubeVideoId) {
-        audio.pause();
+        stateRef.current.activeYoutubeVideoId = playableTrack.youtubeVideoId;
+        setActiveYoutubeVideoId(playableTrack.youtubeVideoId);
+        if (!audio.paused) audio.pause();
         registerTracks([playableTrack]);
         stateRef.current.currentTrack = playableTrack;
         setCurrentTrack(playableTrack);
-        setActiveYoutubeVideoId(playableTrack.youtubeVideoId);
         setYoutubeSeekTarget(null);
         setCurrentTime(0);
         setDuration(playableTrack.durationSec || 200);
         setPlaybackNotice(null);
+        switchingTrackRef.current = false;
+        stateRef.current.isPlaying = true;
         setIsPlaying(true);
         return playableTrack;
       }
 
       if (!playableTrack.audioUrl) {
         const audiusMatches = await searchAudius(`${playableTrack.artist} ${playableTrack.title}`, 3);
+        if (playRequestSeqRef.current !== reqId) return playableTrack;
         const fullMatch = audiusMatches.find((m) => Boolean(m.audioUrl));
         if (fullMatch) {
           playableTrack = {
@@ -336,6 +372,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           registerTracks([playableTrack]);
         } else {
           const matches = await searchItunes(`${playableTrack.artist} ${playableTrack.title}`, 3);
+          if (playRequestSeqRef.current !== reqId) return playableTrack;
           const found = matches.find((m) => Boolean(m.audioUrl));
           if (found) {
             playableTrack = {
@@ -348,6 +385,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      stateRef.current.activeYoutubeVideoId = null;
       setActiveYoutubeVideoId(null);
       setYoutubeSeekTarget(null);
       stateRef.current.currentTrack = playableTrack;
@@ -356,6 +394,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setDuration(playableTrack.durationSec || 30);
 
       if (!playableTrack.audioUrl) {
+        switchingTrackRef.current = false;
+        stateRef.current.isPlaying = false;
         setIsPlaying(false);
         setPlaybackNotice(
           `Add a YouTube key in Settings to unlock "${playableTrack.title}" in browser, or use the Android APK.`,
@@ -368,8 +408,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       audio.currentTime = 0;
       try {
         await audio.play();
+        if (playRequestSeqRef.current !== reqId) return playableTrack;
+        switchingTrackRef.current = false;
+        stateRef.current.isPlaying = true;
         setIsPlaying(true);
-      } catch {
+      } catch (err) {
+        if (playRequestSeqRef.current !== reqId) return playableTrack;
+        switchingTrackRef.current = false;
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return playableTrack;
+        }
+        stateRef.current.isPlaying = false;
         setIsPlaying(false);
         setPlaybackNotice('Tap Play to start audio.');
       }
@@ -781,20 +830,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [currentTime, getAudio, loadAudioSource, recordPlay]);
 
   const togglePlay = useCallback(async () => {
+    switchingTrackRef.current = false;
     const nativePlugin = getNativeMusicPlugin();
     if (activeNativeRef.current && nativePlugin) {
       if (stateRef.current.isPlaying) {
         await nativePlugin.pause();
+        stateRef.current.isPlaying = false;
         setIsPlaying(false);
       } else {
         await nativePlugin.resume();
+        stateRef.current.isPlaying = true;
         setIsPlaying(true);
       }
       return;
     }
 
     if (stateRef.current.activeYoutubeVideoId) {
-      setIsPlaying((prev) => !prev);
+      setIsPlaying((prev) => {
+        const next = !prev;
+        stateRef.current.isPlaying = next;
+        return next;
+      });
       return;
     }
 
@@ -806,12 +862,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (audio.paused) {
       try {
         await audio.play();
+        stateRef.current.isPlaying = true;
         setIsPlaying(true);
       } catch {
+        stateRef.current.isPlaying = false;
         setIsPlaying(false);
       }
     } else {
       audio.pause();
+      stateRef.current.isPlaying = false;
       setIsPlaying(false);
     }
   }, [getAudio, loadAudioSource]);
@@ -890,27 +949,47 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const audio = getAudio();
 
     const onTimeUpdate = () => {
-      if (!stateRef.current.activeYoutubeVideoId) setCurrentTime(audio.currentTime || 0);
+      if (!stateRef.current.activeYoutubeVideoId && !activeNativeRef.current) {
+        setCurrentTime(audio.currentTime || 0);
+      }
     };
     const onLoadedMetadata = () => {
-      if (!stateRef.current.activeYoutubeVideoId && Number.isFinite(audio.duration) && audio.duration > 0) {
+      if (
+        !stateRef.current.activeYoutubeVideoId &&
+        !activeNativeRef.current &&
+        Number.isFinite(audio.duration) &&
+        audio.duration > 0
+      ) {
         setDuration(audio.duration);
       }
     };
     const onPlay = () => {
-      if (!stateRef.current.activeYoutubeVideoId) setIsPlaying(true);
+      if (!stateRef.current.activeYoutubeVideoId && !activeNativeRef.current) {
+        switchingTrackRef.current = false;
+        stateRef.current.isPlaying = true;
+        setIsPlaying(true);
+      }
     };
     const onPause = () => {
-      if (!stateRef.current.activeYoutubeVideoId) setIsPlaying(false);
+      if (
+        !stateRef.current.activeYoutubeVideoId &&
+        !activeNativeRef.current &&
+        !switchingTrackRef.current
+      ) {
+        stateRef.current.isPlaying = false;
+        setIsPlaying(false);
+      }
     };
     const onEnded = () => {
-      if (stateRef.current.activeYoutubeVideoId) return;
+      if (stateRef.current.activeYoutubeVideoId || activeNativeRef.current) return;
       const active = stateRef.current.currentTrack;
       if (active) recordComplete(active);
       void nextTrack(false);
     };
     const onAudioError = () => {
       if (stateRef.current.activeYoutubeVideoId || activeNativeRef.current) return;
+      switchingTrackRef.current = false;
+      stateRef.current.isPlaying = false;
       setIsPlaying(false);
       setPlaybackNotice('Audio stream unavailable on current source — try another track.');
     };
@@ -948,18 +1027,29 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     void Promise.all([
       nativePlugin.addListener('playbackState', (snap) => {
         if (!active || !activeNativeRef.current) return;
+        const activeId = stateRef.current.currentTrack?.id;
+        if (snap.trackId && activeId && snap.trackId !== activeId) return;
         setCurrentTime(snap.currentTime || 0);
         if (snap.duration > 0) setDuration(snap.duration);
-        setIsPlaying(Boolean(snap.isPlaying));
+        if (switchingTrackRef.current && !snap.isPlaying) return;
+        if (snap.isPlaying) switchingTrackRef.current = false;
+        const playingNow = Boolean(snap.isPlaying);
+        stateRef.current.isPlaying = playingNow;
+        setIsPlaying(playingNow);
       }),
-      nativePlugin.addListener('playbackEnded', () => {
+      nativePlugin.addListener('playbackEnded', (payload?: { trackId?: string }) => {
         if (!active || !activeNativeRef.current) return;
         const activeTrack = stateRef.current.currentTrack;
+        if (payload?.trackId && activeTrack && payload.trackId !== activeTrack.id) return;
         if (activeTrack) recordCompleteRef.current(activeTrack);
         void nextTrackRef.current(false);
       }),
       nativePlugin.addListener('playbackError', (err) => {
         if (!active || !activeNativeRef.current) return;
+        const activeTrack = stateRef.current.currentTrack;
+        if (err.trackId && activeTrack && err.trackId !== activeTrack.id) return;
+        switchingTrackRef.current = false;
+        stateRef.current.isPlaying = false;
         setIsPlaying(false);
         setPlaybackNotice(err.message || 'Native stream unavailable — try another track.');
       }),
@@ -988,7 +1078,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!('mediaSession' in navigator) || !currentTrack) return;
+    // Native Android runs Media3 MediaSessionService; skip WebView MediaSession to prevent AudioFocus collisions
+    if (getNativeMusicPlugin() || !('mediaSession' in navigator) || !currentTrack) return;
     navigator.mediaSession.metadata = new MediaMetadata({
       title: currentTrack.title,
       artist: currentTrack.artist,

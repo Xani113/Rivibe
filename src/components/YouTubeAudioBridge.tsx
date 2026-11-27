@@ -26,7 +26,7 @@ declare global {
           playerVars?: Record<string, string | number>;
           events?: {
             onReady?: (e: { target: YTPlayerInstance }) => void;
-            onStateChange?: (e: { data: number }) => void;
+            onStateChange?: (e: { data: number; target: YTPlayerInstance }) => void;
             onError?: () => void;
           };
         },
@@ -91,6 +91,8 @@ export function YouTubeAudioBridge({
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayerInstance | null>(null);
   const readyRef = useRef(false);
+  const switchingVideoRef = useRef(false);
+  const switchStartedAtRef = useRef(0);
   const [minimized, setMinimized] = useState(false);
 
   const latestRef = useRef({
@@ -115,18 +117,24 @@ export function YouTubeAudioBridge({
   // Load or switch video ONLY when videoId changes (never on play/pause/volume toggles)
   useEffect(() => {
     if (!videoId) {
+      switchingVideoRef.current = false;
       if (readyRef.current && playerRef.current) {
         playerRef.current.pauseVideo();
       }
       return;
     }
 
+    switchingVideoRef.current = true;
+    switchStartedAtRef.current = Date.now();
     let cancelled = false;
     void ensureYouTubeIframeApi().then(() => {
       if (cancelled || !containerRef.current || !window.YT?.Player) return;
 
       if (playerRef.current && readyRef.current) {
         playerRef.current.loadVideoById(videoId);
+        if (latestRef.current.isPlaying) {
+          playerRef.current.playVideo();
+        }
         return;
       }
 
@@ -151,14 +159,27 @@ export function YouTubeAudioBridge({
           },
           onStateChange: (event) => {
             if (event.data === 0) {
+              switchingVideoRef.current = false;
               latestRef.current.onEnded();
             } else if (event.data === 1) {
+              switchingVideoRef.current = false;
               latestRef.current.onStateSync(true);
             } else if (event.data === 2) {
+              // Ignore transient PAUSED frames emitted by YouTube while switching tracks cleanly
+              if (
+                switchingVideoRef.current &&
+                latestRef.current.isPlaying &&
+                Date.now() - switchStartedAtRef.current < 3500
+              ) {
+                event.target.playVideo();
+                return;
+              }
+              switchingVideoRef.current = false;
               latestRef.current.onStateSync(false);
             }
           },
           onError: () => {
+            switchingVideoRef.current = false;
             latestRef.current.onError();
           },
         },
@@ -172,8 +193,12 @@ export function YouTubeAudioBridge({
 
   useEffect(() => {
     if (!playerRef.current || !readyRef.current || !videoId) return;
-    if (isPlaying) playerRef.current.playVideo();
-    else playerRef.current.pauseVideo();
+    if (isPlaying) {
+      playerRef.current.playVideo();
+    } else {
+      switchingVideoRef.current = false;
+      playerRef.current.pauseVideo();
+    }
   }, [isPlaying, videoId]);
 
   useEffect(() => {

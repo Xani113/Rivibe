@@ -45,6 +45,7 @@ public final class RiVibeNativeMusicPlugin extends Plugin {
     private volatile boolean currentIsLiveStream = false;
     private volatile float currentVolume = 0.85f;
     private volatile boolean currentMuted = false;
+    private volatile long switchGraceUntilMs = 0L;
     private boolean tickerRunning = false;
 
     private final Runnable progressTicker = new Runnable() {
@@ -53,7 +54,12 @@ public final class RiVibeNativeMusicPlugin extends Plugin {
             MediaController controller = mediaController;
             if (controller != null && controller.isConnected()) {
                 emitPlaybackState(controller);
-                if (controller.isPlaying() || controller.getPlaybackState() == Player.STATE_BUFFERING) {
+                boolean inSwitchGrace = System.currentTimeMillis() < switchGraceUntilMs
+                        && controller.getPlayWhenReady()
+                        && controller.getPlaybackState() != Player.STATE_ENDED;
+                if (controller.isPlaying()
+                        || controller.getPlaybackState() == Player.STATE_BUFFERING
+                        || inSwitchGrace) {
                     mainHandler.postDelayed(this, PROGRESS_INTERVAL_MS);
                     return;
                 }
@@ -250,9 +256,11 @@ public final class RiVibeNativeMusicPlugin extends Plugin {
         activeVideoId = cleanVid;
         currentIsLiveStream = isLiveStream;
 
+        switchGraceUntilMs = System.currentTimeMillis() + 3500L;
         withController(call, controller -> {
             controller.setVolume(currentMuted ? 0f : currentVolume);
-            controller.setMediaItem(mediaItem);
+            controller.setPlayWhenReady(true);
+            controller.setMediaItem(mediaItem, true);
             controller.prepare();
             controller.play();
             startProgressTicker();
@@ -262,6 +270,7 @@ public final class RiVibeNativeMusicPlugin extends Plugin {
 
     @PluginMethod
     public void pause(PluginCall call) {
+        switchGraceUntilMs = 0L;
         withController(call, controller -> {
             controller.pause();
             emitPlaybackState(controller);
@@ -271,7 +280,9 @@ public final class RiVibeNativeMusicPlugin extends Plugin {
 
     @PluginMethod
     public void resume(PluginCall call) {
+        switchGraceUntilMs = System.currentTimeMillis() + 2000L;
         withController(call, controller -> {
+            controller.setPlayWhenReady(true);
             controller.play();
             startProgressTicker();
             emitPlaybackState(controller);
@@ -305,6 +316,7 @@ public final class RiVibeNativeMusicPlugin extends Plugin {
 
     @PluginMethod
     public void stop(PluginCall call) {
+        switchGraceUntilMs = 0L;
         withController(call, controller -> {
             tickerRunning = false;
             controller.stop();
@@ -403,9 +415,15 @@ public final class RiVibeNativeMusicPlugin extends Plugin {
                 ? 0.0
                 : rawDurMs / 1000.0;
 
+        boolean inSwitchGrace = System.currentTimeMillis() < switchGraceUntilMs
+                && controller.getPlaybackState() != Player.STATE_ENDED;
+        boolean effectivePlaying = controller.isPlaying()
+                || (controller.getPlayWhenReady()
+                        && (controller.getPlaybackState() == Player.STATE_BUFFERING || inSwitchGrace));
+
         JSObject snapshot = new JSObject();
         snapshot.put("trackId", activeTrackId);
-        snapshot.put("isPlaying", controller.isPlaying());
+        snapshot.put("isPlaying", effectivePlaying);
         snapshot.put("currentTime", posMs / 1000.0);
         snapshot.put("duration", durSec);
         snapshot.put("isBuffering", controller.getPlaybackState() == Player.STATE_BUFFERING);

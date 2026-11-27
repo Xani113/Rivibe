@@ -1,6 +1,5 @@
 import {
   Heart,
-  ListMusic,
   Mic2,
   Pause,
   Play,
@@ -21,15 +20,14 @@ import { SEED_TRACKS } from '../services/seedCatalog';
 const FALLBACK_ART = SEED_TRACKS[0]?.artworkUrl ?? '';
 
 interface PlayerBarProps {
-  queueOpen: boolean;
+  queueOpen?: boolean;
   onOpenSheet: (initialTab?: 'queue' | 'lyrics') => void;
-  onToggleQueue: () => void;
+  onToggleQueue?: () => void;
 }
 
-export function PlayerBar({ queueOpen, onOpenSheet, onToggleQueue }: PlayerBarProps) {
+export function PlayerBar({ onOpenSheet }: PlayerBarProps) {
   const {
     currentTrack,
-    queue,
     isPlaying,
     currentTime,
     duration,
@@ -215,7 +213,7 @@ export function PlayerBar({ queueOpen, onOpenSheet, onToggleQueue }: PlayerBarPr
             </button>
           </div>
 
-          {/* Right Utilities: Lyrics · Queue Drawer · Volume */}
+          {/* Right Utilities: Lyrics · Volume */}
           <div className="flex items-center justify-end gap-1.5 md:w-[30%] shrink-0">
             <button
               type="button"
@@ -225,21 +223,6 @@ export function PlayerBar({ queueOpen, onOpenSheet, onToggleQueue }: PlayerBarPr
               className="hidden sm:flex w-9 h-9 rounded-lg hover:bg-[rgba(255,255,255,0.08)] items-center justify-center text-[rgba(244,245,247,0.72)] hover:text-[#f4f5f7]"
             >
               <Mic2 className="w-4 h-4" aria-hidden="true" />
-            </button>
-
-            <button
-              type="button"
-              aria-label="Toggle playback queue"
-              aria-pressed={queueOpen}
-              onClick={onToggleQueue}
-              className={`rv-interactive-btn h-9 px-2.5 rounded-lg flex items-center gap-1.5 text-xs font-semibold border ${
-                queueOpen
-                  ? 'bg-[rgba(34,211,166,0.16)] border-[rgba(34,211,166,0.4)] text-[#22d3a6]'
-                  : 'bg-[#131722] border-[rgba(255,255,255,0.08)] text-[#f4f5f7] hover:border-[rgba(255,255,255,0.18)]'
-              }`}
-            >
-              <ListMusic className="w-4 h-4" aria-hidden="true" />
-              <span className="tabular-nums">{queue.length}</span>
             </button>
 
             <div className="hidden lg:flex items-center gap-1.5 pl-1">

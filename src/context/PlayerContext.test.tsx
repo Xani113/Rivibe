@@ -397,4 +397,98 @@ describe('PlayerContext & Queue Engine', () => {
     });
     expect(screen.getByTestId('now-title')).toHaveTextContent('Blue Neighbourhood');
   });
+
+  it('keeps playing state active across rapid song switches and ignores stale native paused snapshots', async () => {
+    let stateCb:
+      | ((snap: {
+          trackId?: string;
+          isPlaying: boolean;
+          currentTime: number;
+          duration: number;
+          isBuffering?: boolean;
+        }) => void)
+      | null = null;
+
+    const mockAdapter: NativeMusicPluginAdapter = {
+      isNativeAndroid: () => true,
+      getCapabilities: vi.fn().mockResolvedValue({
+        nativeAvailable: true,
+        engine: 'media3-exoplayer+innertube',
+        innertube: true,
+        media3: true,
+      }),
+      searchCatalog: vi.fn().mockResolvedValue({ tracks: [] }),
+      getRecommendations: vi.fn().mockResolvedValue({ tracks: [] }),
+      resolveStream: vi.fn(),
+      playTrack: vi.fn().mockImplementation(async ({ trackId }: { trackId: string }) => ({
+        trackId,
+        isPlaying: trackId === 'trk-1',
+        currentTime: 0,
+        duration: 210,
+        isBuffering: trackId === 'trk-2',
+      })),
+      pause: vi.fn().mockResolvedValue(undefined),
+      resume: vi.fn().mockResolvedValue(undefined),
+      seekTo: vi.fn().mockResolvedValue(undefined),
+      setVolume: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      getPlaybackState: vi.fn().mockResolvedValue({
+        trackId: 'trk-2',
+        isPlaying: true,
+        currentTime: 0,
+        duration: 210,
+        isBuffering: false,
+      }),
+      addListener: vi.fn().mockImplementation((name: string, cb: (payload: never) => void) => {
+        if (name === 'playbackState') {
+          stateCb = cb as typeof stateCb;
+        }
+        return Promise.resolve({ remove: vi.fn() });
+      }),
+    };
+
+    __setNativeBridgeAdapterForTests(mockAdapter);
+    const user = userEvent.setup();
+
+    render(
+      <LibraryProvider>
+        <PlayerProvider>
+          <PlayerHarness />
+        </PlayerProvider>
+      </LibraryProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Play First' }));
+    expect(screen.getByTestId('now-title')).toHaveTextContent('Blue Neighbourhood');
+    expect(screen.getByTestId('play-state')).toHaveTextContent('playing');
+
+    // Switch directly to track 2 even if initial native snapshot reports buffering isPlaying=false
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('now-title')).toHaveTextContent('Shelter');
+    });
+
+    // Simulate stale track 1 paused snapshot arriving late after switch to track 2
+    act(() => {
+      stateCb?.({
+        trackId: 'trk-1',
+        isPlaying: false,
+        currentTime: 12,
+        duration: 185,
+        isBuffering: false,
+      });
+    });
+
+    // Once track 2 starts outputting audio, native confirms playing without needing manual Play tap
+    act(() => {
+      stateCb?.({
+        trackId: 'trk-2',
+        isPlaying: true,
+        currentTime: 0.4,
+        duration: 219,
+        isBuffering: false,
+      });
+    });
+    expect(screen.getByTestId('play-state')).toHaveTextContent('playing');
+  });
 });

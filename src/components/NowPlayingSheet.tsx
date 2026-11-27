@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
   ChevronUp,
-  FolderPlus,
   Heart,
   Infinity as InfinityIcon,
   ListMusic,
@@ -385,7 +384,7 @@ export function NowPlayingSheet({
           {showPlaylistMenu ? (
             <div className="rv-tab-enter absolute right-0 top-12 z-50 w-52 p-1.5 rounded-2xl rv-glass-overlay border shadow-2xl space-y-0.5">
               <div className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[rgba(244,245,247,0.52)]">
-                Save to Playlist
+                Add to Playlist
               </div>
               {playlists.map((pl) => (
                 <button
@@ -462,16 +461,6 @@ export function NowPlayingSheet({
             >
               <Radio className="w-3.5 h-3.5 text-[#22d3a6]" aria-hidden="true" />
               <span>Radio</span>
-            </button>
-
-            <button
-              type="button"
-              aria-label="Add current track to playlist"
-              onClick={() => setShowPlaylistMenu((v) => !v)}
-              className="rv-interactive-btn h-10 px-3.5 rounded-full bg-[rgba(255,255,255,0.09)] hover:bg-[rgba(255,255,255,0.16)] backdrop-blur-md border border-[rgba(255,255,255,0.12)] text-xs font-semibold text-[#f4f5f7] inline-flex items-center gap-1.5 shrink-0"
-            >
-              <FolderPlus className="w-3.5 h-3.5 text-[#f4f5f7]" aria-hidden="true" />
-              <span>Save</span>
             </button>
 
             <button

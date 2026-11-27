@@ -152,6 +152,11 @@ export function HomeView({
                     <img
                       src={track.artworkUrl || FALLBACK_ART}
                       alt={track.title}
+                      onError={(e) => {
+                        if (e.currentTarget.src !== FALLBACK_ART) {
+                          e.currentTarget.src = FALLBACK_ART;
+                        }
+                      }}
                       className="w-full h-full object-cover"
                     />
                     <div className="absolute inset-x-1.5 bottom-1.5 flex items-center justify-between gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
@@ -221,6 +226,11 @@ export function HomeView({
                       src={track.artworkUrl || FALLBACK_ART}
                       alt={`${track.album} art`}
                       loading="lazy"
+                      onError={(e) => {
+                        if (e.currentTarget.src !== FALLBACK_ART) {
+                          e.currentTarget.src = FALLBACK_ART;
+                        }
+                      }}
                       className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                     />
 
