@@ -12,11 +12,17 @@ import okhttp3.Response;
  */
 public final class NativeStreamRegistry {
 
+    public interface MediaTransportActionListener {
+        void onNextRequested();
+        void onPreviousRequested();
+    }
+
     private static volatile NativeStreamRegistry instance;
 
     private final OkHttpClient apiHttpClient;
     private final OkHttpClient mediaHttpClient;
     private final InnertubeMusicClient innertubeClient;
+    private volatile MediaTransportActionListener transportListener;
 
     private NativeStreamRegistry() {
         this.apiHttpClient = new OkHttpClient.Builder()
@@ -79,5 +85,25 @@ public final class NativeStreamRegistry {
 
     public InnertubeMusicClient getInnertubeClient() {
         return innertubeClient;
+    }
+
+    public void setMediaTransportListener(MediaTransportActionListener listener) {
+        this.transportListener = listener;
+    }
+
+    public void dispatchNextRequested() {
+        MediaTransportActionListener listener = this.transportListener;
+        if (listener != null) {
+            listener.onNextRequested();
+        }
+    }
+
+    public boolean dispatchPreviousRequested() {
+        MediaTransportActionListener listener = this.transportListener;
+        if (listener != null) {
+            listener.onPreviousRequested();
+            return true;
+        }
+        return false;
     }
 }

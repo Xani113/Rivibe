@@ -103,6 +103,24 @@ public final class RiVibeNativeMusicPlugin extends Plugin {
         }
     };
 
+    @Override
+    public void load() {
+        super.load();
+        NativeStreamRegistry.getInstance().setMediaTransportListener(
+                new NativeStreamRegistry.MediaTransportActionListener() {
+                    @Override
+                    public void onNextRequested() {
+                        mainHandler.post(() -> notifyListeners("mediaNext", new JSObject()));
+                    }
+
+                    @Override
+                    public void onPreviousRequested() {
+                        mainHandler.post(() -> notifyListeners("mediaPrevious", new JSObject()));
+                    }
+                }
+        );
+    }
+
     @PluginMethod
     public void getCapabilities(PluginCall call) {
         JSObject res = new JSObject();
@@ -313,6 +331,7 @@ public final class RiVibeNativeMusicPlugin extends Plugin {
 
     @Override
     protected void handleOnDestroy() {
+        NativeStreamRegistry.getInstance().setMediaTransportListener(null);
         tickerRunning = false;
         mainHandler.removeCallbacks(progressTicker);
         if (mediaController != null) {

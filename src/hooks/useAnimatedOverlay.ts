@@ -12,9 +12,10 @@ function prefersReducedMotion(): boolean {
 
 /**
  * Interruptible mount/transition state for drawers, sheets, and modals.
- * Never locks user input on rapid open/close and cancels pending frames cleanly.
+ * Forces an initial painted off-screen frame before entering so mobile WebViews
+ * always animate smoothly rather than collapsing into a 0ms jump.
  */
-export function useAnimatedOverlay(isOpen: boolean, durationMs = 280): AnimatedOverlayState {
+export function useAnimatedOverlay(isOpen: boolean, durationMs = 340): AnimatedOverlayState {
   const [shouldRender, setShouldRender] = useState(isOpen);
   const [isVisible, setIsVisible] = useState(isOpen);
   const timerRef = useRef<number | null>(null);
@@ -36,7 +37,12 @@ export function useAnimatedOverlay(isOpen: boolean, durationMs = 280): AnimatedO
         setIsVisible(true);
         return;
       }
+      setIsVisible(false);
       rafRef.current = window.requestAnimationFrame(() => {
+        if (typeof document !== 'undefined') {
+          // Force style commit of initial translateY(100%) state before animating to translateY(0)
+          void document.body.offsetHeight;
+        }
         rafRef.current = window.requestAnimationFrame(() => {
           setIsVisible(true);
           rafRef.current = null;

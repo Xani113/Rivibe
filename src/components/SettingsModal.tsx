@@ -29,7 +29,7 @@ export function SettingsModal({
   onClose,
 }: SettingsModalProps) {
   const { canInstallNatively, isInstalled, promptInstall } = useInstallPrompt();
-  const { shouldRender, isVisible } = useAnimatedOverlay(isOpen, 220);
+  const { shouldRender, isVisible } = useAnimatedOverlay(isOpen, 280);
   const [draft, setDraft] = useState<ApiVault>(vault);
   const [installFeedback, setInstallFeedback] = useState<string | null>(null);
   const [savedToast, setSavedToast] = useState(false);
@@ -78,12 +78,12 @@ export function SettingsModal({
           onClose();
         }
       }}
-      className={`fixed inset-0 z-50 bg-[rgba(4,6,10,0.76)] backdrop-blur-md flex items-center justify-center p-4 transition-opacity duration-220 ${
+      className={`fixed inset-0 z-50 bg-[rgba(4,6,10,0.76)] backdrop-blur-md flex items-center justify-center p-4 transition-opacity duration-[280ms] ease-out ${
         isVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
       }`}
     >
       <div
-        className={`w-full max-w-lg max-h-[85dvh] rounded-2xl bg-[#0d1017] border border-[rgba(255,255,255,0.12)] flex flex-col overflow-hidden shadow-2xl transition-transform duration-220 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+        className={`w-full max-w-lg max-h-[85dvh] rounded-2xl bg-[#0d1017] border border-[rgba(255,255,255,0.12)] flex flex-col overflow-hidden shadow-2xl will-change-transform transition-transform duration-[280ms] ease-[cubic-bezier(0.32,0.72,0,1)] ${
           isVisible ? 'translate-y-0 scale-100' : 'translate-y-3 scale-95'
         }`}
       >

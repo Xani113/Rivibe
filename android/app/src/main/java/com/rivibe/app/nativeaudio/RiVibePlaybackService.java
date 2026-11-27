@@ -6,6 +6,7 @@ import android.net.Uri;
 import androidx.annotation.OptIn;
 import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
+import androidx.media3.common.ForwardingPlayer;
 import androidx.media3.common.Player;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.datasource.DataSource;
@@ -20,7 +21,7 @@ import java.io.IOException;
 
 /**
  * Background Media3 foreground service managing ExoPlayer and Android MediaSession
- * for full-length background audio, lock-screen controls, and live radio streams.
+ * for full-length background audio, lock-screen controls (Next/Previous/Play/Pause), and radio streams.
  */
 @OptIn(markerClass = UnstableApi.class)
 public final class RiVibePlaybackService extends MediaSessionService {
@@ -72,6 +73,67 @@ public final class RiVibePlaybackService extends MediaSessionService {
                 .setWakeMode(C.WAKE_MODE_NETWORK)
                 .build();
 
+        // Expose Next/Previous commands continuously so Android lock-screen & notification always render Skip Next/Prev
+        ForwardingPlayer sessionPlayer = new ForwardingPlayer(player) {
+            @Override
+            public Commands getAvailableCommands() {
+                return super.getAvailableCommands()
+                        .buildUpon()
+                        .addAll(
+                                COMMAND_SEEK_TO_NEXT,
+                                COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
+                                COMMAND_SEEK_TO_PREVIOUS,
+                                COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM
+                        )
+                        .build();
+            }
+
+            @Override
+            public boolean isCommandAvailable(int command) {
+                if (command == COMMAND_SEEK_TO_NEXT
+                        || command == COMMAND_SEEK_TO_NEXT_MEDIA_ITEM
+                        || command == COMMAND_SEEK_TO_PREVIOUS
+                        || command == COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM) {
+                    return true;
+                }
+                return super.isCommandAvailable(command);
+            }
+
+            @Override
+            public boolean hasNextMediaItem() {
+                return true;
+            }
+
+            @Override
+            public boolean hasPreviousMediaItem() {
+                return true;
+            }
+
+            @Override
+            public void seekToNext() {
+                NativeStreamRegistry.getInstance().dispatchNextRequested();
+            }
+
+            @Override
+            public void seekToNextMediaItem() {
+                NativeStreamRegistry.getInstance().dispatchNextRequested();
+            }
+
+            @Override
+            public void seekToPrevious() {
+                if (!NativeStreamRegistry.getInstance().dispatchPreviousRequested()) {
+                    super.seekTo(0L);
+                }
+            }
+
+            @Override
+            public void seekToPreviousMediaItem() {
+                if (!NativeStreamRegistry.getInstance().dispatchPreviousRequested()) {
+                    super.seekTo(0L);
+                }
+            }
+        };
+
         Intent launchIntent = new Intent(this, MainActivity.class)
                 .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent sessionActivity = PendingIntent.getActivity(
@@ -81,7 +143,7 @@ public final class RiVibePlaybackService extends MediaSessionService {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
-        mediaSession = new MediaSession.Builder(this, player)
+        mediaSession = new MediaSession.Builder(this, sessionPlayer)
                 .setSessionActivity(sessionActivity)
                 .build();
     }

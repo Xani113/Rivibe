@@ -11,7 +11,7 @@ interface QueueDrawerProps {
 
 export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
   const { queue, infiniteRadio, setInfiniteRadio, clearUpcomingQueue } = usePlayer();
-  const { shouldRender, isVisible } = useAnimatedOverlay(isOpen, 260);
+  const { shouldRender, isVisible } = useAnimatedOverlay(isOpen, 360);
   const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -33,7 +33,7 @@ export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
           onClose();
         }
       }}
-      className={`fixed inset-0 z-50 flex justify-end items-end md:items-stretch transition-opacity duration-250 ${
+      className={`fixed inset-0 z-50 flex justify-end items-end md:items-stretch transition-opacity duration-[360ms] ease-out ${
         isVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
       }`}
     >
@@ -44,7 +44,7 @@ export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
       />
 
       <div
-        className={`relative z-10 w-full md:w-[420px] max-h-[84dvh] md:max-h-full bg-[#0d1017] border-t md:border-t-0 md:border-l border-[rgba(255,255,255,0.1)] rounded-t-[26px] md:rounded-none flex flex-col overflow-hidden shadow-2xl transition-transform duration-260 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+        className={`relative z-10 w-full md:w-[420px] max-h-[84dvh] md:max-h-full bg-[#0d1017] border-t md:border-t-0 md:border-l border-[rgba(255,255,255,0.1)] rounded-t-[26px] md:rounded-none flex flex-col overflow-hidden shadow-2xl will-change-transform transition-transform duration-[360ms] ease-[cubic-bezier(0.32,0.72,0,1)] ${
           isVisible ? 'translate-y-0 md:translate-x-0' : 'translate-y-full md:translate-y-0 md:translate-x-full'
         }`}
         style={{ paddingBottom: 'var(--rv-safe-bottom)' }}

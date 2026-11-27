@@ -36,7 +36,7 @@ export function ArtistInfoModal() {
   }
 
   const isOpen = Boolean(artistInfo);
-  const { shouldRender, isVisible } = useAnimatedOverlay(isOpen, 250);
+  const { shouldRender, isVisible } = useAnimatedOverlay(isOpen, 300);
 
   const artists = useMemo(
     () => splitArtistNames(artistInfo?.artistQuery ?? lastInfoRef.current?.artistQuery ?? ''),
@@ -90,7 +90,7 @@ export function ArtistInfoModal() {
           closeArtistInfo();
         }
       }}
-      className={`fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4 transition-opacity duration-250 ${
+      className={`fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4 transition-opacity duration-[300ms] ease-out ${
         isVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
       }`}
     >
@@ -101,7 +101,7 @@ export function ArtistInfoModal() {
       />
 
       <div
-        className={`relative z-10 w-full sm:max-w-xl h-[86dvh] sm:h-auto sm:max-h-[84dvh] rounded-t-[28px] sm:rounded-2xl bg-[#0d1017] border-t sm:border border-[rgba(255,255,255,0.12)] flex flex-col overflow-hidden shadow-2xl transition-transform duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+        className={`relative z-10 w-full sm:max-w-xl h-[86dvh] sm:h-auto sm:max-h-[84dvh] rounded-t-[28px] sm:rounded-2xl bg-[#0d1017] border-t sm:border border-[rgba(255,255,255,0.12)] flex flex-col overflow-hidden shadow-2xl will-change-transform transition-transform duration-[300ms] ease-[cubic-bezier(0.32,0.72,0,1)] ${
           isVisible ? 'translate-y-0 sm:scale-100' : 'translate-y-full sm:translate-y-4 sm:scale-95'
         }`}
         style={{ paddingBottom: 'var(--rv-safe-bottom)' }}

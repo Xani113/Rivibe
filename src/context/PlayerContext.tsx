@@ -934,6 +934,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const nextTrackRef = useRef(nextTrack);
   nextTrackRef.current = nextTrack;
+  const prevTrackRef = useRef(prevTrack);
+  prevTrackRef.current = prevTrack;
   const recordCompleteRef = useRef(recordComplete);
   recordCompleteRef.current = recordComplete;
 
@@ -960,6 +962,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (!active || !activeNativeRef.current) return;
         setIsPlaying(false);
         setPlaybackNotice(err.message || 'Native stream unavailable — try another track.');
+      }),
+      nativePlugin.addListener('mediaNext', () => {
+        if (!active) return;
+        void nextTrackRef.current(true);
+      }),
+      nativePlugin.addListener('mediaPrevious', () => {
+        if (!active) return;
+        void prevTrackRef.current();
       }),
     ]).then((list) => {
       if (!active) {

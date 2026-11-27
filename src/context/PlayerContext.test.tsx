@@ -313,6 +313,73 @@ describe('PlayerContext & Queue Engine', () => {
     expect(mockAdapter.pause).toHaveBeenCalled();
   });
 
+  it('handles native Media3 notification Next/Previous transport events cleanly', async () => {
+    const listeners = new Map<string, () => void>();
+    const mockAdapter: NativeMusicPluginAdapter = {
+      isNativeAndroid: () => true,
+      getCapabilities: vi.fn().mockResolvedValue({
+        nativeAvailable: true,
+        engine: 'media3-exoplayer+innertube',
+        innertube: true,
+        media3: true,
+      }),
+      searchCatalog: vi.fn().mockResolvedValue({ tracks: [] }),
+      getRecommendations: vi.fn().mockResolvedValue({ tracks: [] }),
+      resolveStream: vi.fn(),
+      playTrack: vi.fn().mockResolvedValue({
+        trackId: 'trk-1',
+        isPlaying: true,
+        currentTime: 0,
+        duration: 185,
+        isBuffering: false,
+      }),
+      pause: vi.fn().mockResolvedValue(undefined),
+      resume: vi.fn().mockResolvedValue(undefined),
+      seekTo: vi.fn().mockResolvedValue(undefined),
+      setVolume: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      getPlaybackState: vi.fn().mockResolvedValue({
+        trackId: 'trk-1',
+        isPlaying: true,
+        currentTime: 0,
+        duration: 185,
+        isBuffering: false,
+      }),
+      addListener: vi.fn().mockImplementation((name: string, cb: () => void) => {
+        listeners.set(name, cb);
+        return Promise.resolve({ remove: vi.fn() });
+      }),
+    };
+
+    __setNativeBridgeAdapterForTests(mockAdapter);
+    const user = userEvent.setup();
+
+    render(
+      <LibraryProvider>
+        <PlayerProvider>
+          <PlayerHarness />
+        </PlayerProvider>
+      </LibraryProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Play First' }));
+    expect(screen.getByTestId('now-title')).toHaveTextContent('Blue Neighbourhood');
+
+    act(() => {
+      listeners.get('mediaNext')?.();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('now-title')).toHaveTextContent('Shelter');
+    });
+
+    act(() => {
+      listeners.get('mediaPrevious')?.();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('now-title')).toHaveTextContent('Blue Neighbourhood');
+    });
+  });
+
   it('auto-populates Up Next queue with similar recommendations when playing an isolated search track', async () => {
     const user = userEvent.setup();
     render(

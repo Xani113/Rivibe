@@ -92,6 +92,14 @@ export interface NativeMusicPlugin {
     eventName: 'playbackError',
     listenerFunc: (event: NativePlaybackErrorEvent) => void,
   ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: 'mediaNext',
+    listenerFunc: () => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: 'mediaPrevious',
+    listenerFunc: () => void,
+  ): Promise<PluginListenerHandle>;
 }
 
 export interface NativeMusicPluginAdapter extends NativeMusicPlugin {
