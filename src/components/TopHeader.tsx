@@ -1,6 +1,7 @@
 import { useState, type RefObject } from 'react';
 import {
   Check,
+  Cloud,
   Download,
   KeyRound,
   Menu,
@@ -9,7 +10,7 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
-import type { ApiVault, MoodId } from '../types/music';
+import type { ApiVault, CloudUser, MoodId } from '../types/music';
 import { getTimeGreeting } from '../utils/formatTime';
 
 interface TopHeaderProps {
@@ -20,6 +21,11 @@ interface TopHeaderProps {
   onSearchChange: (value: string) => void;
   activeMood: MoodId;
   onMoodChange: (mood: MoodId) => void;
+  fullOnly: boolean;
+  onToggleFullOnly: () => void;
+  cloudUser: CloudUser | null;
+  backendOnline: boolean;
+  onOpenAuth: () => void;
   onUpdateDisplayName: (name: string) => void;
   onOpenApiVault: () => void;
   onOpenGetApp: () => void;
@@ -48,6 +54,11 @@ export function TopHeader({
   onSearchChange,
   activeMood,
   onMoodChange,
+  fullOnly,
+  onToggleFullOnly,
+  cloudUser,
+  backendOnline,
+  onOpenAuth,
   onUpdateDisplayName,
   onOpenApiVault,
   onOpenGetApp,
@@ -61,6 +72,7 @@ export function TopHeader({
   const greeting = getTimeGreeting();
 
   const customKeysCount = [
+    apiVault.youtubeApiKey,
     apiVault.lastfmApiKey,
     apiVault.tastediveApiKey,
     apiVault.jamendoClientId,
@@ -129,8 +141,25 @@ export function TopHeader({
           </div>
         </div>
 
-        {/* Right Actions: API Keys Vault + Get Mobile App */}
+        {/* Right Actions: Cloud Account + API Keys Vault + Get Mobile App */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <button
+            type="button"
+            aria-label="Cloud Account"
+            onClick={onOpenAuth}
+            className="rv-interactive-btn min-h-[38px] px-2.5 sm:px-3 py-1.5 rounded-full bg-[rgba(255,248,240,0.11)] hover:bg-[rgba(255,248,240,0.18)] border border-[rgba(255,244,230,0.16)] flex items-center gap-1.5 text-xs font-medium text-[#fbf7f2]"
+          >
+            <Cloud
+              className={`w-3.5 h-3.5 ${
+                cloudUser ? 'text-[#7cc49f]' : backendOnline ? 'text-[#f0c46c]' : 'text-[rgba(247,239,230,0.62)]'
+              }`}
+              aria-hidden="true"
+            />
+            <span className="hidden md:inline max-w-[90px] truncate">
+              {cloudUser ? cloudUser.displayName : 'Sign In'}
+            </span>
+          </button>
+
           <button
             type="button"
             aria-label="API Keys"
@@ -198,12 +227,25 @@ export function TopHeader({
         </div>
       </div>
 
-      {/* Mood Filter Chips */}
+      {/* Mood Filter Chips + Full Songs Toggle */}
       <div
         role="group"
         aria-label="Mood filters"
         className="flex items-center gap-2 overflow-x-auto pb-1 rv-scroll"
       >
+        <button
+          type="button"
+          onClick={onToggleFullOnly}
+          aria-pressed={fullOnly}
+          className={`rv-interactive-btn shrink-0 px-3.5 py-1.5 min-h-[34px] rounded-full text-xs font-semibold border ${
+            fullOnly
+              ? 'bg-[#7cc49f] text-[#111914] border-[#7cc49f]'
+              : 'bg-[rgba(124,196,159,0.12)] text-[#7cc49f] border-[rgba(124,196,159,0.32)] hover:bg-[rgba(124,196,159,0.22)]'
+          }`}
+        >
+          {fullOnly ? 'Full Songs Only ✓' : 'Full Songs'}
+        </button>
+
         {MOOD_CHIPS.map((chip) => {
           const active = activeMood === chip.id;
           return (

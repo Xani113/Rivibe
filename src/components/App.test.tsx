@@ -86,6 +86,29 @@ describe('RiVibe App UI & Accessibility', () => {
     await user.click(screen.getByRole('button', { name: /close now playing/i }));
   });
 
+  it('toggles Full Songs Only mode and registers a Cloud Sync account via Next.js API', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const fullToggle = await screen.findByRole('button', { name: /full songs/i });
+    await user.click(fullToggle);
+    expect(fullToggle).toHaveAttribute('aria-pressed', 'true');
+
+    await user.click(screen.getByRole('button', { name: /cloud account/i }));
+    expect(await screen.findByRole('dialog', { name: /rivibe cloud account/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /create account/i }));
+    await user.type(screen.getByLabelText(/display name/i), 'ManojCloud');
+    await user.type(screen.getByLabelText(/email/i), 'manoj@rivibe.app');
+    await user.type(screen.getByLabelText(/password/i), 'StrongPass123!');
+    await user.click(screen.getByRole('button', { name: /create cloud account/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /rivibe cloud account/i })).not.toBeInTheDocument();
+    });
+    expect(await screen.findByRole('heading', { name: /manojcloud/i })).toBeInTheDocument();
+  });
+
   it('passes axe-core WCAG accessibility checks on the main screen', async () => {
     const { container } = render(<App />);
     await screen.findByRole('heading', { name: /manoj/i });

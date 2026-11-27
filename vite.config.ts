@@ -8,6 +8,14 @@ export default defineConfig(({ mode }) => {
 
   return {
     base,
+    server: {
+      proxy: {
+        '/api': {
+          target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:3001',
+          changeOrigin: true,
+        },
+      },
+    },
     plugins: [
       react(),
       tailwindcss(),
@@ -90,6 +98,7 @@ export default defineConfig(({ mode }) => {
       globals: true,
       environment: 'jsdom',
       setupFiles: ['./src/test/setup.ts'],
+      exclude: ['**/node_modules/**', '**/dist/**', 'backend/**'],
       css: true,
       coverage: {
         provider: 'v8',

@@ -14,6 +14,7 @@ import {
   fetchArtistSpotlight,
   fetchLyrics,
   fetchPersonalizedRecommendations,
+  resolveFullSongTrack,
   searchItunes,
 } from '../services/musicApis';
 import { buildTrackRadioQueue, rankRecommendations } from '../engine/vibeEngine';
@@ -22,6 +23,8 @@ import { SEED_TRACKS } from '../services/seedCatalog';
 interface PlayerContextValue {
   currentTrack: Track | null;
   currentRadioStation: RadioStation | null;
+  activeYoutubeVideoId: string | null;
+  youtubeSeekTarget: number | null;
   queue: Track[];
   queueIndex: number;
   isPlaying: boolean;
@@ -45,6 +48,10 @@ interface PlayerContextValue {
   setVolume: (vol: number) => void;
   toggleMute: () => void;
   clearNotice: () => void;
+  handleYoutubeProgress: (curSec: number, durSec: number) => void;
+  handleYoutubeStateSync: (playing: boolean) => void;
+  handleYoutubeEnded: () => void;
+  handleYoutubeError: () => void;
 }
 
 const PlayerContext = createContext<PlayerContextValue | undefined>(undefined);
@@ -55,6 +62,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     tasteProfile,
     apiVault,
     activeMood,
+    fullOnly,
     recordPlay,
     recordComplete,
     recordSkip,
@@ -64,11 +72,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(() => SEED_TRACKS[0] ?? null);
   const [currentRadioStation, setCurrentRadioStation] = useState<RadioStation | null>(null);
+  const [activeYoutubeVideoId, setActiveYoutubeVideoId] = useState<string | null>(null);
+  const [youtubeSeekTarget, setYoutubeSeekTarget] = useState<number | null>(null);
   const [queue, setQueue] = useState<Track[]>(() => SEED_TRACKS);
   const [queueIndex, setQueueIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(30);
+  const [duration, setDuration] = useState(() => SEED_TRACKS[0]?.durationSec ?? 185);
   const [volume, setVolumeState] = useState(0.85);
   const [isMuted, setIsMuted] = useState(false);
   const [playbackNotice, setPlaybackNotice] = useState<string | null>(null);
@@ -77,7 +87,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [isLoadingLyrics, setIsLoadingLyrics] = useState(false);
   const [artistSpotlight, setArtistSpotlight] = useState<ArtistSpotlight | null>(null);
 
-  // Refs to avoid stale closures inside native audio event listeners
   const stateRef = useRef({
     currentTrack,
     queue,
@@ -86,6 +95,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     catalog,
     tasteProfile,
     currentRadioStation,
+    activeYoutubeVideoId,
   });
   stateRef.current = {
     currentTrack,
@@ -95,6 +105,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     catalog,
     tasteProfile,
     currentRadioStation,
+    activeYoutubeVideoId,
   };
 
   const getAudio = useCallback((): HTMLAudioElement => {
@@ -108,17 +119,37 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const loadAudioSource = useCallback(
     async (track: Track) => {
       const audio = getAudio();
-      let playableTrack = track;
+      let playableTrack = await resolveFullSongTrack(track, apiVault);
 
-      if (!track.audioUrl) {
-        const matches = await searchItunes(`${track.artist} ${track.title}`, 3);
+      if (playableTrack.streamType === 'youtube' && playableTrack.youtubeVideoId) {
+        audio.pause();
+        registerTracks([playableTrack]);
+        setCurrentTrack(playableTrack);
+        setCurrentRadioStation(null);
+        setActiveYoutubeVideoId(playableTrack.youtubeVideoId);
+        setYoutubeSeekTarget(null);
+        setCurrentTime(0);
+        setDuration(playableTrack.durationSec || 200);
+        setPlaybackNotice(null);
+        setIsPlaying(true);
+        return;
+      }
+
+      if (!playableTrack.audioUrl) {
+        const matches = await searchItunes(`${playableTrack.artist} ${playableTrack.title}`, 3);
         const found = matches.find((m) => Boolean(m.audioUrl));
         if (found) {
-          playableTrack = { ...track, audioUrl: found.audioUrl, streamType: found.streamType };
+          playableTrack = {
+            ...playableTrack,
+            audioUrl: found.audioUrl,
+            streamType: found.streamType,
+          };
           registerTracks([playableTrack]);
         }
       }
 
+      setActiveYoutubeVideoId(null);
+      setYoutubeSeekTarget(null);
       setCurrentTrack(playableTrack);
       setCurrentRadioStation(null);
       setCurrentTime(0);
@@ -126,7 +157,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
       if (!playableTrack.audioUrl) {
         setIsPlaying(false);
-        setPlaybackNotice(`Metadata preview only for "${playableTrack.title}". Connect an API or play a live stream.`);
+        setPlaybackNotice(
+          `Add a YouTube Data API v3 key in API Keys to play "${playableTrack.title}" in full, or play any FULL Audius track.`,
+        );
         return;
       }
 
@@ -141,7 +174,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setPlaybackNotice('Tap Play to start audio in your browser.');
       }
     },
-    [getAudio, registerTracks],
+    [apiVault, getAudio, registerTracks],
   );
 
   const playTrack = useCallback(
@@ -155,8 +188,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         0,
         baseList.findIndex((t) => t.id === track.id),
       );
-      const nextQueue =
-        baseList[idx]?.id === track.id ? baseList : [track, ...baseList];
+      const nextQueue = baseList[idx]?.id === track.id ? baseList : [track, ...baseList];
 
       setQueue(nextQueue);
       setQueueIndex(baseList[idx]?.id === track.id ? idx : 0);
@@ -174,17 +206,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       recordPlay(seedTrack);
       await loadAudioSource(seedTrack);
 
-      const fresh = await fetchPersonalizedRecommendations(seedTrack, activeMood, apiVault);
+      const fresh = await fetchPersonalizedRecommendations(seedTrack, activeMood, apiVault, fullOnly);
       registerTracks(fresh);
       const enrichedQueue = buildTrackRadioQueue(seedTrack, [...fresh, ...catalog], tasteProfile, 18);
       setQueue(enrichedQueue);
     },
-    [activeMood, apiVault, catalog, loadAudioSource, recordPlay, registerTracks, tasteProfile],
+    [activeMood, apiVault, catalog, fullOnly, loadAudioSource, recordPlay, registerTracks, tasteProfile],
   );
 
   const playRadioStation = useCallback(
     async (station: RadioStation) => {
       const audio = getAudio();
+      setActiveYoutubeVideoId(null);
       setCurrentRadioStation(station);
       setPlaybackNotice(null);
       setCurrentTime(0);
@@ -203,8 +236,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const nextTrack = useCallback(
     async (userSkipped = false) => {
-      const { currentTrack: active, queue: q, queueIndex: idx, infiniteRadio: radioOn, catalog: cat, tasteProfile: tp } =
-        stateRef.current;
+      const {
+        currentTrack: active,
+        queue: q,
+        queueIndex: idx,
+        infiniteRadio: radioOn,
+        catalog: cat,
+        tasteProfile: tp,
+      } = stateRef.current;
 
       if (userSkipped && active) {
         recordSkip(active);
@@ -244,8 +283,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   );
 
   const prevTrack = useCallback(async () => {
+    if (stateRef.current.activeYoutubeVideoId && currentTime > 3) {
+      setYoutubeSeekTarget(0);
+      setCurrentTime(0);
+      return;
+    }
     const audio = getAudio();
-    if (audio.currentTime > 3) {
+    if (!stateRef.current.activeYoutubeVideoId && audio.currentTime > 3) {
       audio.currentTime = 0;
       setCurrentTime(0);
       return;
@@ -258,9 +302,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setQueueIndex(prevIdx);
     recordPlay(target);
     await loadAudioSource(target);
-  }, [getAudio, loadAudioSource, recordPlay]);
+  }, [currentTime, getAudio, loadAudioSource, recordPlay]);
 
   const togglePlay = useCallback(async () => {
+    if (stateRef.current.activeYoutubeVideoId) {
+      setIsPlaying((prev) => !prev);
+      return;
+    }
+
     const audio = getAudio();
     if (!audio.src && stateRef.current.currentTrack) {
       await loadAudioSource(stateRef.current.currentTrack);
@@ -281,8 +330,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const seekTo = useCallback(
     (seconds: number) => {
-      const audio = getAudio();
       const bounded = Math.max(0, Math.min(seconds, duration || 30));
+      if (stateRef.current.activeYoutubeVideoId) {
+        setYoutubeSeekTarget(bounded);
+        setCurrentTime(bounded);
+        return;
+      }
+      const audio = getAudio();
       audio.currentTime = bounded;
       setCurrentTime(bounded);
     },
@@ -311,19 +365,56 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const clearNotice = useCallback(() => setPlaybackNotice(null), []);
 
-  // Wire HTML5 Audio lifecycle events once
+  const handleYoutubeProgress = useCallback((curSec: number, durSec: number) => {
+    setCurrentTime(curSec);
+    if (durSec > 0) setDuration(durSec);
+  }, []);
+
+  const handleYoutubeStateSync = useCallback((playing: boolean) => {
+    setIsPlaying(playing);
+  }, []);
+
+  const handleYoutubeEnded = useCallback(() => {
+    const active = stateRef.current.currentTrack;
+    if (active) recordComplete(active);
+    void nextTrack(false);
+  }, [nextTrack, recordComplete]);
+
+  const handleYoutubeError = useCallback(() => {
+    const active = stateRef.current.currentTrack;
+    if (active?.audioUrl) {
+      setActiveYoutubeVideoId(null);
+      const audio = getAudio();
+      audio.src = active.audioUrl;
+      void audio.play().then(
+        () => setIsPlaying(true),
+        () => setIsPlaying(false),
+      );
+      return;
+    }
+    setPlaybackNotice('YouTube embed restricted by uploader — skipping to next recommended track.');
+    void nextTrack(false);
+  }, [getAudio, nextTrack]);
+
   useEffect(() => {
     const audio = getAudio();
 
-    const onTimeUpdate = () => setCurrentTime(audio.currentTime || 0);
+    const onTimeUpdate = () => {
+      if (!stateRef.current.activeYoutubeVideoId) setCurrentTime(audio.currentTime || 0);
+    };
     const onLoadedMetadata = () => {
-      if (Number.isFinite(audio.duration) && audio.duration > 0) {
+      if (!stateRef.current.activeYoutubeVideoId && Number.isFinite(audio.duration) && audio.duration > 0) {
         setDuration(audio.duration);
       }
     };
-    const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
+    const onPlay = () => {
+      if (!stateRef.current.activeYoutubeVideoId) setIsPlaying(true);
+    };
+    const onPause = () => {
+      if (!stateRef.current.activeYoutubeVideoId) setIsPlaying(false);
+    };
     const onEnded = () => {
+      if (stateRef.current.activeYoutubeVideoId) return;
       const active = stateRef.current.currentTrack;
       if (active) recordComplete(active);
       void nextTrack(false);
@@ -344,7 +435,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
   }, [getAudio, nextTrack, recordComplete]);
 
-  // Web Media Session API for Android Chrome / Desktop lock-screen controls
   useEffect(() => {
     if (!('mediaSession' in navigator) || !currentTrack) return;
     navigator.mediaSession.metadata = new MediaMetadata({
@@ -362,7 +452,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     navigator.mediaSession.setActionHandler('previoustrack', () => void prevTrack());
   }, [currentTrack, currentRadioStation, isPlaying, nextTrack, prevTrack, togglePlay]);
 
-  // Fetch Lyrics & Artist Spotlight when track changes
   useEffect(() => {
     if (!currentTrack || currentRadioStation) {
       setLyrics(null);
@@ -393,6 +482,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     () => ({
       currentTrack,
       currentRadioStation,
+      activeYoutubeVideoId,
+      youtubeSeekTarget,
       queue,
       queueIndex,
       isPlaying,
@@ -416,10 +507,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setVolume,
       toggleMute,
       clearNotice,
+      handleYoutubeProgress,
+      handleYoutubeStateSync,
+      handleYoutubeEnded,
+      handleYoutubeError,
     }),
     [
       currentTrack,
       currentRadioStation,
+      activeYoutubeVideoId,
+      youtubeSeekTarget,
       queue,
       queueIndex,
       isPlaying,
@@ -442,6 +539,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setVolume,
       toggleMute,
       clearNotice,
+      handleYoutubeProgress,
+      handleYoutubeStateSync,
+      handleYoutubeEnded,
+      handleYoutubeError,
     ],
   );
 

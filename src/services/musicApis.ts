@@ -8,6 +8,11 @@ import type {
 } from '../types/music';
 import { SEED_RADIO_STATIONS, SEED_TRACKS } from './seedCatalog';
 import { normalizeText } from '../utils/formatTime';
+import {
+  recommendViaBackend,
+  resolveFullSongViaBackend,
+  searchMusicViaBackend,
+} from './cloudApi';
 
 export interface PublicApiEntry {
   name: string;
@@ -19,6 +24,14 @@ export interface PublicApiEntry {
 }
 
 export const PUBLIC_MUSIC_API_DIRECTORY: PublicApiEntry[] = [
+  {
+    name: 'YouTube Data API v3',
+    auth: 'apiKey',
+    cors: 'Yes',
+    role: 'Full-length music catalog search & official YouTube IFrame full-song playback',
+    docsUrl: 'https://developers.google.com/youtube/v3',
+    keyField: 'youtubeApiKey',
+  },
   {
     name: 'iTunes Search',
     auth: 'No',
@@ -81,7 +94,7 @@ export const PUBLIC_MUSIC_API_DIRECTORY: PublicApiEntry[] = [
     name: 'TasteDive',
     auth: 'apiKey',
     cors: 'Unknown',
-    role: 'Similar artist recommendation graph',
+    role: 'Similar artist recommendation graph (via Next.js server proxy)',
     docsUrl: 'https://tastedive.com/read/api',
     keyField: 'tastediveApiKey',
   },
@@ -116,6 +129,123 @@ async function fetchJsonWithTimeout<T>(url: string, timeoutMs = 6500): Promise<T
   } finally {
     window.clearTimeout(timer);
   }
+}
+
+function parseIsoDuration(iso?: string): number {
+  if (!iso) return 180;
+  const m = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/i.exec(iso.trim());
+  if (!m) return 180;
+  const total = Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0);
+  return total > 0 ? total : 180;
+}
+
+export async function searchYouTubeDirect(
+  query: string,
+  youtubeApiKey: string,
+  limit = 10,
+): Promise<Track[]> {
+  if (!youtubeApiKey.trim()) return [];
+  const searchUrl =
+    `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&videoEmbeddable=true&maxResults=${limit}` +
+    `&q=${encodeURIComponent(query)}&key=${encodeURIComponent(youtubeApiKey.trim())}`;
+
+  const data = await fetchJsonWithTimeout<{
+    items?: Array<{
+      id?: { videoId?: string };
+      snippet?: {
+        title?: string;
+        channelTitle?: string;
+        publishedAt?: string;
+        thumbnails?: { high?: { url?: string }; medium?: { url?: string } };
+      };
+    }>;
+  }>(searchUrl);
+
+  const items = (data?.items ?? []).filter((i) => i.id?.videoId && i.snippet?.title);
+  if (items.length === 0) return [];
+
+  const ids = items.map((i) => i.id!.videoId!).join(',');
+  const detailUrl =
+    `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,status&id=${encodeURIComponent(ids)}` +
+    `&key=${encodeURIComponent(youtubeApiKey.trim())}`;
+  const detailRes = await fetchJsonWithTimeout<{
+    items?: Array<{
+      id?: string;
+      contentDetails?: { duration?: string };
+      status?: { embeddable?: boolean };
+    }>;
+  }>(detailUrl);
+  const details = new Map((detailRes?.items ?? []).map((v) => [v.id, v]));
+
+  return items
+    .map((item): Track | null => {
+      const videoId = item.id!.videoId!;
+      const detail = details.get(videoId);
+      if (detail?.status?.embeddable === false) return null;
+      const rawTitle = item.snippet?.title ?? 'Untitled';
+      const channel = (item.snippet?.channelTitle ?? 'YouTube Music').replace(/ - Topic$/i, '');
+      const split = rawTitle.split(/\s+-\s+/);
+      const artist = split.length > 1 ? split[0]!.trim() : channel;
+      const title = split.length > 1 ? split.slice(1).join(' - ').trim() : rawTitle;
+
+      return {
+        id: `yt-${videoId}`,
+        title,
+        artist,
+        album: 'YouTube Music Catalog',
+        artworkUrl:
+          item.snippet?.thumbnails?.high?.url ||
+          item.snippet?.thumbnails?.medium?.url ||
+          `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+        audioUrl: null,
+        youtubeVideoId: videoId,
+        streamType: 'youtube',
+        durationSec: parseIsoDuration(detail?.contentDetails?.duration),
+        genres: ['YouTube Music'],
+        moods: inferMoodsFromGenre(rawTitle),
+        releaseYear: item.snippet?.publishedAt ? Number(item.snippet.publishedAt.slice(0, 4)) : undefined,
+        source: 'youtube',
+        externalUrl: `https://music.youtube.com/watch?v=${videoId}`,
+        popularity: 88,
+      };
+    })
+    .filter((t): t is Track => t !== null);
+}
+
+export async function resolveFullSongTrack(
+  track: Track,
+  vault: ApiVault,
+): Promise<Track> {
+  if (track.streamType === 'full' || (track.streamType === 'youtube' && track.youtubeVideoId)) {
+    return track;
+  }
+
+  // 1. Try Next.js server resolver (handles server-side YOUTUBE_API_KEY cleanly)
+  const serverResolved = await resolveFullSongViaBackend(track.artist, track.title, vault);
+  if (serverResolved?.youtubeVideoId) {
+    return {
+      ...track,
+      youtubeVideoId: serverResolved.youtubeVideoId,
+      streamType: 'youtube',
+      durationSec: serverResolved.durationSec,
+      artworkUrl: track.artworkUrl || serverResolved.artworkUrl,
+    };
+  }
+
+  // 2. Fallback to direct browser YouTube Data API v3 key if configured in API Vault
+  if (vault.youtubeApiKey.trim()) {
+    const ytHits = await searchYouTubeDirect(`${track.artist} ${track.title} official audio`, vault.youtubeApiKey, 2);
+    if (ytHits[0]?.youtubeVideoId) {
+      return {
+        ...track,
+        youtubeVideoId: ytHits[0].youtubeVideoId,
+        streamType: 'youtube',
+        durationSec: ytHits[0].durationSec,
+      };
+    }
+  }
+
+  return track;
 }
 
 interface ItunesResultItem {
@@ -317,31 +447,54 @@ export async function fetchListenBrainzFreshCount(): Promise<Array<{ title: stri
     .filter((r) => r.title && r.artist);
 }
 
-function mergeAndDeduplicateTracks(lists: Track[][]): Track[] {
+function streamRank(track: Track): number {
+  if (track.streamType === 'full') return 3;
+  if (track.streamType === 'youtube') return 2;
+  if (track.streamType === 'preview') return 1;
+  return 0;
+}
+
+function mergeAndDeduplicateTracks(lists: Track[][], fullOnly = false): Track[] {
   const byKey = new Map<string, Track>();
   for (const list of lists) {
     for (const track of list) {
       const key = `${normalizeText(track.title)}::${normalizeText(track.artist)}`;
       const existing = byKey.get(key);
-      if (!existing || (existing.streamType === 'none' && track.streamType !== 'none')) {
+      if (!existing || streamRank(track) > streamRank(existing)) {
         byKey.set(key, track);
       }
     }
   }
-  return Array.from(byKey.values());
+  const merged = Array.from(byKey.values()).sort((a, b) => streamRank(b) - streamRank(a));
+  return fullOnly
+    ? merged.filter((t) => t.streamType === 'full' || t.streamType === 'youtube')
+    : merged;
 }
 
-export async function searchAllMusic(query: string, vault: ApiVault): Promise<Track[]> {
+export async function searchAllMusic(
+  query: string,
+  vault: ApiVault,
+  fullOnly = false,
+): Promise<Track[]> {
   const trimmed = query.trim();
   if (!trimmed) return SEED_TRACKS;
 
-  const [itunesTracks, audiusTracks, jamendoTracks] = await Promise.all([
-    searchItunes(trimmed, 16),
+  const backendTracks = await searchMusicViaBackend(trimmed, fullOnly, vault);
+  if (backendTracks && backendTracks.length > 0) {
+    return backendTracks;
+  }
+
+  const [ytTracks, audiusTracks, jamendoTracks, itunesTracks] = await Promise.all([
+    searchYouTubeDirect(trimmed, vault.youtubeApiKey, 10),
     searchAudius(trimmed, 10),
     searchJamendo(trimmed, vault.jamendoClientId, 8),
+    fullOnly ? Promise.resolve([]) : searchItunes(trimmed, 14),
   ]);
 
-  const merged = mergeAndDeduplicateTracks([itunesTracks, audiusTracks, jamendoTracks]);
+  const merged = mergeAndDeduplicateTracks(
+    [ytTracks, audiusTracks, jamendoTracks, itunesTracks],
+    fullOnly,
+  );
   if (merged.length > 0) return merged;
 
   const q = normalizeText(trimmed);
@@ -364,50 +517,68 @@ const MOOD_QUERY_MAP: Record<MoodId, string> = {
   jazz: 'miles davis modern jazz fusion',
 };
 
-export async function fetchDiscoveryTracks(mood: MoodId, vault: ApiVault): Promise<Track[]> {
+export async function fetchDiscoveryTracks(
+  mood: MoodId,
+  vault: ApiVault,
+  fullOnly = false,
+): Promise<Track[]> {
   const query = MOOD_QUERY_MAP[mood] || MOOD_QUERY_MAP.all;
 
-  const [itunes, audiusTrending, jamendo, freshLb] = await Promise.all([
-    searchItunes(query, 16),
-    fetchAudiusTrending(10),
+  const [ytTracks, audiusTrending, jamendo, itunes, freshLb] = await Promise.all([
+    searchYouTubeDirect(query, vault.youtubeApiKey, 8),
+    fetchAudiusTrending(12),
     searchJamendo(query, vault.jamendoClientId, 8),
+    fullOnly ? Promise.resolve([]) : searchItunes(query, 12),
     fetchListenBrainzFreshCount(),
   ]);
 
-  const lbLookup = freshLb[0]
+  const lbLookup = !fullOnly && freshLb[0]
     ? await searchItunes(`${freshLb[0].artist} ${freshLb[0].title}`, 3)
     : [];
 
-  const merged = mergeAndDeduplicateTracks([itunes, audiusTrending, jamendo, lbLookup, SEED_TRACKS]);
-  return merged;
+  return mergeAndDeduplicateTracks(
+    [ytTracks, audiusTrending, jamendo, itunes, lbLookup, SEED_TRACKS],
+    fullOnly,
+  );
 }
 
 export async function fetchPersonalizedRecommendations(
   seedTrack: Track,
   mood: MoodId,
   vault: ApiVault,
+  fullOnly = false,
 ): Promise<Track[]> {
-  const [lastfmQueries, tastediveArtists, genreTracks, audiusMatches, jamendoMatches] =
+  const backendRecs = await recommendViaBackend(seedTrack.artist, seedTrack.title, vault);
+
+  const [lastfmQueries, tastediveArtists, ytMatches, audiusMatches, jamendoMatches, genreTracks] =
     await Promise.all([
       fetchLastFmSimilarNames(seedTrack, vault.lastfmApiKey),
       fetchTasteDiveSimilarArtists(seedTrack.artist, vault.tastediveApiKey),
-      searchItunes(`${seedTrack.genres[0] ?? 'electronic'} ${seedTrack.artist}`, 12),
+      searchYouTubeDirect(`${seedTrack.artist} ${seedTrack.title} mix`, vault.youtubeApiKey, 6),
       searchAudius(seedTrack.genres[0] ?? seedTrack.artist, 8),
       searchJamendo(seedTrack.genres[0] ?? 'chill', vault.jamendoClientId, 8),
+      fullOnly ? Promise.resolve([]) : searchItunes(`${seedTrack.genres[0] ?? 'electronic'} ${seedTrack.artist}`, 10),
     ]);
 
   const extraQueries = [...lastfmQueries.slice(0, 2), ...tastediveArtists.slice(0, 2)];
-  const extraResults = await Promise.all(extraQueries.map((q) => searchItunes(q, 4)));
+  const extraResults = await Promise.all(
+    extraQueries.map((q) => (fullOnly ? searchAudius(q, 4) : searchItunes(q, 4))),
+  );
 
-  const discoveryFallback = await fetchDiscoveryTracks(mood, vault);
+  const discoveryFallback = await fetchDiscoveryTracks(mood, vault, fullOnly);
 
-  return mergeAndDeduplicateTracks([
-    ...extraResults,
-    genreTracks,
-    audiusMatches,
-    jamendoMatches,
-    discoveryFallback,
-  ]);
+  return mergeAndDeduplicateTracks(
+    [
+      backendRecs ?? [],
+      ytMatches,
+      audiusMatches,
+      jamendoMatches,
+      ...extraResults,
+      genreTracks,
+      discoveryFallback,
+    ],
+    fullOnly,
+  );
 }
 
 interface RadioBrowserRaw {

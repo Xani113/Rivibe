@@ -14,6 +14,7 @@ import type { ApiVault, Track } from '../types/music';
 
 const emptyVault: ApiVault = {
   version: 1,
+  youtubeApiKey: '',
   lastfmApiKey: '',
   tastediveApiKey: '',
   jamendoClientId: '',
@@ -21,6 +22,7 @@ const emptyVault: ApiVault = {
   geniusAccessToken: '',
   spotifyClientId: '',
   githubRepoUrl: 'https://github.com/xani13/rivibe',
+  backendUrl: '',
 };
 
 describe('musicApis (public-apis#music adapters)', () => {

@@ -1,6 +1,8 @@
 export type MusicProviderId =
   | 'itunes'
   | 'audius'
+  | 'youtube'
+  | 'deezer'
   | 'theaudiodb'
   | 'listenbrainz'
   | 'radiobrowser'
@@ -45,7 +47,8 @@ export interface Track {
   album: string;
   artworkUrl: string;
   audioUrl: string | null;
-  streamType: 'full' | 'preview' | 'none';
+  youtubeVideoId?: string;
+  streamType: 'full' | 'preview' | 'youtube' | 'none';
   durationSec: number;
   genres: string[];
   moods: string[];
@@ -112,6 +115,7 @@ export interface TasteProfile {
 
 export interface ApiVault {
   version: number;
+  youtubeApiKey: string;
   lastfmApiKey: string;
   tastediveApiKey: string;
   jamendoClientId: string;
@@ -119,6 +123,27 @@ export interface ApiVault {
   geniusAccessToken: string;
   spotifyClientId: string;
   githubRepoUrl: string;
+  backendUrl: string;
+}
+
+export interface CloudUser {
+  id: string;
+  email: string;
+  displayName: string;
+  createdAt: number;
+}
+
+export interface BackendCapabilities {
+  ok: boolean;
+  capabilities?: {
+    youtubeFullSongs: boolean;
+    lastfm: boolean;
+    tastedive: boolean;
+    jamendo: boolean;
+    audius: boolean;
+    deezerProxy: boolean;
+    itunes: boolean;
+  };
 }
 
 export interface ArtistSpotlight {

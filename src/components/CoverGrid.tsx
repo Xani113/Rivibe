@@ -87,9 +87,11 @@ export function CoverGrid({
               <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide bg-[rgba(18,14,11,0.72)] text-[#fbf7f2] backdrop-blur-md border border-[rgba(255,244,230,0.16)]">
                 {track.streamType === 'full'
                   ? 'FULL'
-                  : track.streamType === 'preview'
-                    ? '30s'
-                    : 'MIX'}
+                  : track.streamType === 'youtube'
+                    ? 'YT FULL'
+                    : track.streamType === 'preview'
+                      ? '30s'
+                      : 'MIX'}
               </span>
 
               {/* Quick action pill overlay */}

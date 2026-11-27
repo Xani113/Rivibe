@@ -10,6 +10,11 @@ coverage/
 *.local
 *.tsbuildinfo
 android/app/src/main/assets/public/
+backend/.next/
+backend/data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
 
 # Environment secrets
 .env

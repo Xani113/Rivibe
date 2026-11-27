@@ -142,6 +142,48 @@ export const defaultHandlers = [
   http.get('https://binaryjazz.us/wp-json/genrenator/v1/genre/', () => {
     return HttpResponse.json('dreamy lo-fi synthwave');
   }),
+
+  http.get('/api/health', () => {
+    return HttpResponse.json({
+      ok: true,
+      service: 'rivibe-nextjs-backend',
+      capabilities: {
+        youtubeFullSongs: false,
+        lastfm: false,
+        tastedive: false,
+        jamendo: false,
+        audius: true,
+        deezerProxy: true,
+        itunes: true,
+      },
+    });
+  }),
+
+  http.get('/api/auth/me', () => {
+    return HttpResponse.json({ user: null });
+  }),
+
+  http.post('/api/auth/register', async ({ request }) => {
+    const body = (await request.json()) as { email: string; displayName: string };
+    return HttpResponse.json(
+      {
+        user: {
+          id: 'usr-cloud-1',
+          email: body.email,
+          displayName: body.displayName,
+          createdAt: Date.now(),
+        },
+        token: 'mock-jwt-token',
+      },
+      { status: 201 },
+    );
+  }),
+
+  http.put('/api/library', () => HttpResponse.json({ ok: true })),
+  http.get('/api/library', () => HttpResponse.json({ snapshot: null, playlists: [] })),
+  http.get('/api/music/resolve-full', () => HttpResponse.json({ resolved: null })),
+  http.get('/api/music/search', () => HttpResponse.json({ tracks: [] })),
+  http.get('/api/music/recommend', () => HttpResponse.json({ tracks: [] })),
 ];
 
 export const server = setupServer(...defaultHandlers);

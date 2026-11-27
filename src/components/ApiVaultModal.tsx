@@ -102,8 +102,37 @@ export function ApiVaultModal({
           {/* Optional API Keys */}
           <div className="space-y-3">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-[#f0c46c]">
-              Optional API Keys (Boost Spotify-Style Similarity & Full Streams)
+              Full-Song YouTube Catalog & Optional API Keys
             </h3>
+
+            <label className="block space-y-1">
+              <span className="text-xs font-medium text-[#fbf7f2]">
+                YouTube Data API v3 Key (Google Cloud Console — Full-Length Songs & YT Music Search)
+              </span>
+              <input
+                type="password"
+                value={draft.youtubeApiKey}
+                onChange={(e) => setDraft({ ...draft, youtubeApiKey: e.target.value })}
+                placeholder="AIza... (enables full-length YouTube IFrame playback)"
+                className="w-full px-3.5 py-2 rounded-xl bg-[rgba(18,14,11,0.45)] border border-[rgba(255,244,230,0.16)] text-xs text-[#fbf7f2]"
+              />
+              <span className="block text-[11px] text-[rgba(247,239,230,0.56)]">
+                Google has no standalone YouTube Music REST key — enabling YouTube Data API v3 in Google Cloud Console unlocks music search and full-length songs.
+              </span>
+            </label>
+
+            <label className="block space-y-1">
+              <span className="text-xs font-medium text-[#fbf7f2]">
+                Next.js Cloud Backend URL (leave blank in dev to use /api proxy)
+              </span>
+              <input
+                type="text"
+                value={draft.backendUrl}
+                onChange={(e) => setDraft({ ...draft, backendUrl: e.target.value })}
+                placeholder="http://localhost:3001"
+                className="w-full px-3.5 py-2 rounded-xl bg-[rgba(18,14,11,0.45)] border border-[rgba(255,244,230,0.16)] text-xs text-[#fbf7f2]"
+              />
+            </label>
 
             <label className="block space-y-1">
               <span className="text-xs font-medium text-[#fbf7f2]">

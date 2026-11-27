@@ -140,7 +140,7 @@ export function scoreTrack(
   }
 
   // 5. Audio playability & popularity balance
-  if (track.streamType === 'full') score += 1.4;
+  if (track.streamType === 'full' || track.streamType === 'youtube') score += 1.4;
   else if (track.streamType === 'preview') score += 0.9;
 
   if (typeof track.popularity === 'number') {

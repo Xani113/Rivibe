@@ -13,7 +13,9 @@ import { FloatingPlayer } from './components/FloatingPlayer';
 import { NowPlayingSheet } from './components/NowPlayingSheet';
 import { ApiVaultModal } from './components/ApiVaultModal';
 import { GetAppModal } from './components/GetAppModal';
+import { AuthModal } from './components/AuthModal';
 import { MobileDock } from './components/MobileDock';
+import { YouTubeAudioBridge } from './components/YouTubeAudioBridge';
 import { normalizeText } from './utils/formatTime';
 
 function RiVibeWorkspace() {
@@ -26,6 +28,8 @@ function RiVibeWorkspace() {
     recommendations,
     activeMood,
     setActiveMood,
+    fullOnly,
+    setFullOnly,
     searchQuery,
     setSearchQuery,
     searchResults,
@@ -33,6 +37,8 @@ function RiVibeWorkspace() {
     isLoadingCatalog,
     radioStations,
     isLoadingRadio,
+    cloudUser,
+    backendOnline,
     loadRadio,
     toggleLike,
     recordSkip,
@@ -42,15 +48,26 @@ function RiVibeWorkspace() {
     updateApiVault,
     clearApiVault,
     runSurpriseVibe,
+    signInCloud,
+    signUpCloud,
+    signOutCloud,
   } = useLibrary();
 
   const {
     currentTrack,
     currentRadioStation,
+    activeYoutubeVideoId,
+    youtubeSeekTarget,
     isPlaying,
+    volume,
+    isMuted,
     playTrack,
     startTrackRadio,
     playRadioStation,
+    handleYoutubeProgress,
+    handleYoutubeStateSync,
+    handleYoutubeEnded,
+    handleYoutubeError,
   } = usePlayer();
 
   const [railSection, setRailSection] = useState<RailSection>('browse');
@@ -60,6 +77,7 @@ function RiVibeWorkspace() {
   const [nowPlayingOpen, setNowPlayingOpen] = useState(false);
   const [apiVaultOpen, setApiVaultOpen] = useState(false);
   const [getAppOpen, setGetAppOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const handleSelectRail = (section: RailSection) => {
@@ -208,6 +226,11 @@ function RiVibeWorkspace() {
               onSearchChange={setSearchQuery}
               activeMood={activeMood}
               onMoodChange={setActiveMood}
+              fullOnly={fullOnly}
+              onToggleFullOnly={() => setFullOnly(!fullOnly)}
+              cloudUser={cloudUser}
+              backendOnline={backendOnline}
+              onOpenAuth={() => setAuthModalOpen(true)}
               onUpdateDisplayName={updateDisplayName}
               onOpenApiVault={() => setApiVaultOpen(true)}
               onOpenGetApp={() => setGetAppOpen(true)}
@@ -432,6 +455,28 @@ function RiVibeWorkspace() {
         isOpen={getAppOpen}
         githubRepoUrl={apiVault.githubRepoUrl}
         onClose={() => setGetAppOpen(false)}
+      />
+
+      <AuthModal
+        isOpen={authModalOpen}
+        cloudUser={cloudUser}
+        backendOnline={backendOnline}
+        onSignIn={signInCloud}
+        onSignUp={signUpCloud}
+        onSignOut={signOutCloud}
+        onClose={() => setAuthModalOpen(false)}
+      />
+
+      <YouTubeAudioBridge
+        videoId={activeYoutubeVideoId}
+        isPlaying={isPlaying}
+        volume={volume}
+        isMuted={isMuted}
+        seekTargetSec={youtubeSeekTarget}
+        onProgress={handleYoutubeProgress}
+        onStateSync={handleYoutubeStateSync}
+        onEnded={handleYoutubeEnded}
+        onError={handleYoutubeError}
       />
     </div>
   );

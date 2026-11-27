@@ -8,6 +8,7 @@ const KEYS = {
   vault: 'rivibe_api_vault_v1',
   playlists: 'rivibe_playlists_v1',
   tracks: 'rivibe_saved_tracks_v1',
+  authToken: 'rivibe_cloud_token_v1',
 } as const;
 
 function safeReadJson<T>(key: string): T | null {
@@ -85,6 +86,7 @@ export function saveTasteProfile(profile: TasteProfile): void {
 export function createDefaultApiVault(): ApiVault {
   return {
     version: STORAGE_VERSION,
+    youtubeApiKey: import.meta.env.VITE_YOUTUBE_API_KEY ?? '',
     lastfmApiKey: import.meta.env.VITE_LASTFM_API_KEY ?? '',
     tastediveApiKey: import.meta.env.VITE_TASTEDIVE_API_KEY ?? '',
     jamendoClientId: import.meta.env.VITE_JAMENDO_CLIENT_ID ?? '',
@@ -92,6 +94,7 @@ export function createDefaultApiVault(): ApiVault {
     geniusAccessToken: import.meta.env.VITE_GENIUS_ACCESS_TOKEN ?? '',
     spotifyClientId: import.meta.env.VITE_SPOTIFY_CLIENT_ID ?? '',
     githubRepoUrl: import.meta.env.VITE_GITHUB_REPO_URL || 'https://github.com/xani13/rivibe',
+    backendUrl: import.meta.env.VITE_API_BASE_URL ?? '',
   };
 }
 
@@ -106,6 +109,7 @@ export function loadApiVault(): ApiVault {
     ...parsed,
     theAudioDbApiKey: parsed.theAudioDbApiKey || defaults.theAudioDbApiKey,
     githubRepoUrl: parsed.githubRepoUrl || defaults.githubRepoUrl,
+    backendUrl: parsed.backendUrl ?? defaults.backendUrl,
   };
 }
 
@@ -116,6 +120,7 @@ export function saveApiVault(vault: ApiVault): void {
 export function resetVaultSecrets(): ApiVault {
   const clean: ApiVault = {
     version: STORAGE_VERSION,
+    youtubeApiKey: '',
     lastfmApiKey: '',
     tastediveApiKey: '',
     jamendoClientId: '',
@@ -123,9 +128,27 @@ export function resetVaultSecrets(): ApiVault {
     geniusAccessToken: '',
     spotifyClientId: '',
     githubRepoUrl: 'https://github.com/xani13/rivibe',
+    backendUrl: '',
   };
   saveApiVault(clean);
   return clean;
+}
+
+export function loadAuthToken(): string | null {
+  try {
+    return localStorage.getItem(KEYS.authToken);
+  } catch {
+    return null;
+  }
+}
+
+export function saveAuthToken(token: string | null): void {
+  try {
+    if (!token) localStorage.removeItem(KEYS.authToken);
+    else localStorage.setItem(KEYS.authToken, token);
+  } catch {
+    // Ignore storage errors cleanly
+  }
 }
 
 export function loadPlaylists(): Playlist[] {
