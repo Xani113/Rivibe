@@ -73,14 +73,30 @@ describe('RiVibe App UI & Queue Workflow', () => {
     await user.click(screen.getByRole('button', { name: /^create$/i }));
     expect((await screen.findAllByText('Night Drive')).length).toBeGreaterThanOrEqual(1);
 
-    // Open Now Playing sheet and inspect Up Next + Lyrics tabs
+    // Open Now Playing sheet and inspect Up Next, Lyrics, Save to Playlist, Radio, and Autoplay controls
     await user.click(screen.getByRole('button', { name: /open now playing details/i }));
     const studioDialog = await screen.findByRole('dialog', { name: /now playing studio/i });
 
     expect(within(studioDialog).getByRole('tab', { name: /up next/i })).toBeInTheDocument();
+    expect(within(studioDialog).getByRole('button', { name: /build radio queue from track/i })).toBeInTheDocument();
+
+    const autoplayBtn = within(studioDialog).getByRole('button', { name: /autoplay/i });
+    const initialPressed = autoplayBtn.getAttribute('aria-pressed');
+    await user.click(autoplayBtn);
+    expect(autoplayBtn.getAttribute('aria-pressed')).not.toBe(initialPressed);
+
+    await user.click(within(studioDialog).getByRole('button', { name: /add current track to playlist/i }));
+    expect(within(studioDialog).getByText(/save to playlist/i)).toBeInTheDocument();
 
     await user.click(within(studioDialog).getByRole('tab', { name: /lyrics/i }));
     expect(await within(studioDialog).findByText(/Look at the stars/i)).toBeInTheDocument();
+
+    const modalAxe = await axe.run(studioDialog, {
+      rules: {
+        'color-contrast': { enabled: false },
+      },
+    });
+    expect(modalAxe.violations).toEqual([]);
 
     await user.click(within(studioDialog).getByRole('button', { name: /close now playing/i }));
 
