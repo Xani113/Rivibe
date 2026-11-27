@@ -63,6 +63,7 @@ interface PlayerContextValue {
   toggleMute: () => void;
   clearNotice: () => void;
   clearQueueToast: () => void;
+  showToast: (message: string) => void;
   handleYoutubeProgress: (curSec: number, durSec: number) => void;
   handleYoutubeStateSync: (playing: boolean) => void;
   handleYoutubeEnded: () => void;
@@ -88,6 +89,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const userInitiatedRef = useRef(false);
   const activeNativeRef = useRef(false);
   const toastTimerRef = useRef<number | null>(null);
+  const isRadioSessionRef = useRef(true);
+  const topUpLockRef = useRef<{ trackId: string; ts: number }>({ trackId: '', ts: 0 });
 
   const [queue, setQueue] = useState<Track[]>(
     () => initialSavedQueue?.queue ?? SEED_TRACKS.slice(0, 6),
@@ -196,12 +199,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (firstFull) {
       const idx = Math.max(0, livePool.findIndex((t) => t.id === firstFull.id));
       stateRef.current.currentTrack = firstFull;
-      stateRef.current.queue = livePool.slice(0, 18);
-      stateRef.current.queueIndex = Math.min(idx, Math.max(0, Math.min(livePool.length, 18) - 1));
+      stateRef.current.queue = livePool.slice(0, 42);
+      stateRef.current.queueIndex = Math.min(idx, Math.max(0, Math.min(livePool.length, 42) - 1));
       setCurrentTrack(firstFull);
       setDuration(firstFull.durationSec || 180);
-      setQueue(livePool.slice(0, 18));
-      setQueueIndex(Math.min(idx, Math.max(0, Math.min(livePool.length, 18) - 1)));
+      setQueue(livePool.slice(0, 42));
+      setQueueIndex(Math.min(idx, Math.max(0, Math.min(livePool.length, 42) - 1)));
     }
   }, [catalog, currentTrack, isPlaying]);
 
@@ -376,15 +379,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   );
 
   const appendSimilarRecommendations = useCallback(
-    (seedTrack: Track) => {
+    (seedTrack: Track, allowAppendOnTail = false) => {
       void fetchPersonalizedRecommendations(seedTrack, activeMood, apiVault, false).then((fresh) => {
         if (fresh.length === 0) return;
         registerTracks(fresh);
         setQueue((curr) => {
           const activeId = stateRef.current.currentTrack?.id;
-          if (activeId !== seedTrack.id) return curr;
+          if (!allowAppendOnTail && activeId !== seedTrack.id) return curr;
           const existingIds = new Set(curr.map((t) => t.id));
-          const additions = fresh.filter((f) => !existingIds.has(f.id)).slice(0, 15);
+          const remainingCount = Math.max(0, curr.length - 1 - stateRef.current.queueIndex);
+          const desiredAdditions = Math.max(15, 45 - remainingCount);
+          const additions = fresh.filter((f) => !existingIds.has(f.id)).slice(0, desiredAdditions);
           if (additions.length === 0) return curr;
           const updated = [...curr, ...additions];
           stateRef.current.queue = updated;
@@ -404,12 +409,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       userInitiatedRef.current = true;
       const shouldAppendSimilar =
         Boolean(options?.appendSimilar) || !contextTracks || contextTracks.length <= 1;
+      isRadioSessionRef.current = shouldAppendSimilar;
 
       const baseList = options?.appendSimilar
         ? [track]
         : contextTracks && contextTracks.length > 0
           ? contextTracks
-          : buildTrackRadioQueue(track, catalog, tasteProfile, 16);
+          : buildTrackRadioQueue(track, catalog, tasteProfile, 40);
 
       const idx = baseList.findIndex((t) => t.id === track.id);
       const nextQueue = idx >= 0 ? baseList : [track, ...baseList];
@@ -590,6 +596,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearUpcomingQueue = useCallback(() => {
+    isRadioSessionRef.current = false;
     const active = stateRef.current.queue[stateRef.current.queueIndex] ?? stateRef.current.currentTrack;
     const nextQ = active ? [active] : [];
     stateRef.current.queue = nextQ;
@@ -602,7 +609,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const startTrackRadio = useCallback(
     async (seedTrack: Track) => {
       userInitiatedRef.current = true;
-      const initialQueue = buildTrackRadioQueue(seedTrack, catalog, tasteProfile, 16);
+      isRadioSessionRef.current = true;
+      const initialQueue = buildTrackRadioQueue(seedTrack, catalog, tasteProfile, 40);
       stateRef.current.queue = initialQueue;
       stateRef.current.queueIndex = 0;
       setQueue(initialQueue);
@@ -617,7 +625,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         seedTrack,
         [...fresh, ...catalog],
         tasteProfile,
-        18,
+        45,
       );
       stateRef.current.queue = enrichedQueue;
       setQueue(enrichedQueue);
@@ -699,7 +707,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         } else if (radioOn) {
           const existingIds = new Set(q.map((t) => t.id));
           const extra = rankRecommendations(cat, tp, {
-            limit: 8,
+            limit: 25,
+            maxPerArtist: 3,
             excludeIds: existingIds,
             seedTrack: active ?? undefined,
           }).map((s) => s.track);
@@ -726,8 +735,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       recordPlay(target);
       const resolvedTarget = await loadAudioSource(target);
 
-      if (radioOn && rep === 'off' && finalIdx >= workingQueue.length - 2) {
-        appendSimilarRecommendations(resolvedTarget);
+      const remainingUpcoming = workingQueue.length - 1 - finalIdx;
+      const now = Date.now();
+      if (
+        radioOn &&
+        isRadioSessionRef.current &&
+        rep === 'off' &&
+        remainingUpcoming < 8 &&
+        (topUpLockRef.current.trackId !== resolvedTarget.id || now - topUpLockRef.current.ts > 8000)
+      ) {
+        topUpLockRef.current = { trackId: resolvedTarget.id, ts: now };
+        appendSimilarRecommendations(resolvedTarget, true);
       }
     },
     [appendSimilarRecommendations, getAudio, loadAudioSource, recordPlay, recordSkip, seekTo],
@@ -1035,6 +1053,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       toggleMute,
       clearNotice,
       clearQueueToast,
+      showToast: showQueueToast,
       handleYoutubeProgress,
       handleYoutubeStateSync,
       handleYoutubeEnded,
@@ -1076,6 +1095,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       toggleMute,
       clearNotice,
       clearQueueToast,
+      showQueueToast,
       handleYoutubeProgress,
       handleYoutubeStateSync,
       handleYoutubeEnded,

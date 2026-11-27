@@ -79,6 +79,7 @@ export interface NativeMusicPlugin {
   setVolume(options: { volume: number; muted?: boolean }): Promise<void>;
   stop(): Promise<void>;
   getPlaybackState(): Promise<NativePlaybackSnapshot>;
+  minimizeApp?: () => Promise<void>;
   addListener(
     eventName: 'playbackState',
     listenerFunc: (state: NativePlaybackSnapshot) => void,
@@ -231,5 +232,19 @@ export async function resolveNativeStream(
     return info?.streamUrl ? info : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Backgrounds the Android MainActivity without destroying WebView or audio playback.
+ */
+export async function minimizeNativeApp(): Promise<boolean> {
+  const plugin = getNativeMusicPlugin();
+  if (!plugin?.minimizeApp) return false;
+  try {
+    await plugin.minimizeApp();
+    return true;
+  } catch {
+    return false;
   }
 }

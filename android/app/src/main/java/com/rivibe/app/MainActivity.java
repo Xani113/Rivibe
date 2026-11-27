@@ -1,8 +1,11 @@
 package com.rivibe.app;
 
 import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
 import android.view.View;
+import android.webkit.WebView;
+import androidx.activity.OnBackPressedCallback;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
@@ -18,13 +21,21 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
 
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        getWindow().setBackgroundDrawable(new ColorDrawable(Color.parseColor("#090b10")));
 
         View decorView = getWindow().getDecorView();
+        decorView.setBackgroundColor(Color.parseColor("#090b10"));
         WindowInsetsControllerCompat insetsController =
                 WindowCompat.getInsetsController(getWindow(), decorView);
         if (insetsController != null) {
             insetsController.setAppearanceLightStatusBars(false);
             insetsController.setAppearanceLightNavigationBars(false);
+        }
+
+        if (getBridge() != null && getBridge().getWebView() != null) {
+            WebView webView = getBridge().getWebView();
+            webView.setBackgroundColor(Color.parseColor("#090b10"));
+            webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
         }
 
         View contentRoot = findViewById(android.R.id.content);
@@ -38,6 +49,29 @@ public class MainActivity extends BridgeActivity {
                 return WindowInsetsCompat.CONSUMED;
             });
             ViewCompat.requestApplyInsets(contentRoot);
+        }
+
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                if (getBridge() != null) {
+                    getBridge().triggerWindowJSEvent("rivibeHardwareBack");
+                } else {
+                    moveTaskToBack(true);
+                }
+            }
+        });
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (getBridge() != null && getBridge().getWebView() != null) {
+            WebView webView = getBridge().getWebView();
+            webView.setBackgroundColor(Color.parseColor("#090b10"));
+            webView.onResume();
+            webView.resumeTimers();
+            webView.invalidate();
         }
     }
 }

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { server } from '../test/mswServer';
 import {
+  fetchArtistProfile,
   fetchDiscoveryTracks,
   fetchLyrics,
   fetchPersonalizedRecommendations,
@@ -192,5 +193,13 @@ describe('musicApis', () => {
     const recs = await fetchPersonalizedRecommendations(seed, 'all', emptyVault);
     expect(recs[0]?.id).toBe('yt-sim-1');
     expect(recs.some((t) => t.youtubeVideoId === 'ayanamVid')).toBe(false);
+  });
+
+  it('fetches Artist Info profile combining Wikipedia summary and top tracks', async () => {
+    const profile = await fetchArtistProfile('Rito Riba', emptyVault);
+    expect(profile.name).toBe('Rito Riba');
+    expect(profile.bio).toContain('Rito Riba');
+    expect(profile.topTracks.length).toBeGreaterThan(0);
+    expect(profile.artworkUrl).toBeTruthy();
   });
 });

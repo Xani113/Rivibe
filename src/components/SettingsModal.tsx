@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import type { ApiVault } from '../types/music';
 import { useInstallPrompt } from '../hooks/useInstallPrompt';
+import { useAnimatedOverlay } from '../hooks/useAnimatedOverlay';
 import { isNativeAndroidPlaybackAvailable } from '../services/nativeMusicBridge';
 
 interface SettingsModalProps {
@@ -28,6 +29,7 @@ export function SettingsModal({
   onClose,
 }: SettingsModalProps) {
   const { canInstallNatively, isInstalled, promptInstall } = useInstallPrompt();
+  const { shouldRender, isVisible } = useAnimatedOverlay(isOpen, 220);
   const [draft, setDraft] = useState<ApiVault>(vault);
   const [installFeedback, setInstallFeedback] = useState<string | null>(null);
   const [savedToast, setSavedToast] = useState(false);
@@ -41,7 +43,7 @@ export function SettingsModal({
     if (isOpen) closeRef.current?.focus();
   }, [vault, isOpen]);
 
-  if (!isOpen) return null;
+  if (!shouldRender) return null;
 
   const releasesUrl = `${vault.githubRepoUrl.replace(/\/$/, '')}/releases`;
 
@@ -65,13 +67,26 @@ export function SettingsModal({
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
+      role={isOpen ? 'dialog' : undefined}
+      aria-modal={isOpen ? 'true' : undefined}
+      aria-hidden={!isOpen}
+      inert={!isOpen || undefined}
       aria-label="RiVibe Settings"
-      onKeyDown={(e) => e.key === 'Escape' && onClose()}
-      className="fixed inset-0 z-50 bg-[rgba(4,6,10,0.76)] backdrop-blur-md flex items-center justify-center p-4"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation();
+          onClose();
+        }
+      }}
+      className={`fixed inset-0 z-50 bg-[rgba(4,6,10,0.76)] backdrop-blur-md flex items-center justify-center p-4 transition-opacity duration-220 ${
+        isVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+      }`}
     >
-      <div className="w-full max-w-lg max-h-[85dvh] rounded-2xl bg-[#0d1017] border border-[rgba(255,255,255,0.12)] flex flex-col overflow-hidden shadow-2xl">
+      <div
+        className={`w-full max-w-lg max-h-[85dvh] rounded-2xl bg-[#0d1017] border border-[rgba(255,255,255,0.12)] flex flex-col overflow-hidden shadow-2xl transition-transform duration-220 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+          isVisible ? 'translate-y-0 scale-100' : 'translate-y-3 scale-95'
+        }`}
+      >
         {/* Header */}
         <div className="px-5 py-4 border-b border-[rgba(255,255,255,0.08)] flex items-center justify-between">
           <div className="flex items-center gap-2.5">

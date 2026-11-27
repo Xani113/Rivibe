@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import type { AppTab, Playlist } from '../types/music';
 import { isNativeAndroidPlaybackAvailable } from '../services/nativeMusicBridge';
+import { useKeyboardOpen } from '../hooks/useKeyboardOpen';
 import rivibeLogo from '../assets/rivibe-logo.png';
 
 interface NavShellProps {
@@ -45,6 +46,7 @@ export function NavShell({
   const [creating, setCreating] = useState(false);
   const [draftName, setDraftName] = useState('');
   const nativeAndroid = isNativeAndroidPlaybackAvailable();
+  const keyboardOpen = useKeyboardOpen();
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -256,7 +258,11 @@ export function NavShell({
       {/* Mobile Portrait Bottom 3-Tab Bar */}
       <nav
         aria-label="Mobile bottom navigation"
-        className="rv-mobile-bottom-nav md:hidden fixed bottom-0 left-0 right-0 z-30 h-14 bg-[#0b0e14]/95 backdrop-blur-xl border-t border-[rgba(255,255,255,0.08)] flex items-center px-2"
+        className={`rv-mobile-bottom-nav md:hidden fixed bottom-0 left-0 right-0 z-30 h-14 bg-[#0b0e14]/95 backdrop-blur-xl border-t border-[rgba(255,255,255,0.08)] flex items-center px-2 transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+          keyboardOpen
+            ? 'translate-y-full opacity-0 pointer-events-none'
+            : 'translate-y-0 opacity-100'
+        }`}
         style={{ paddingBottom: 'var(--rv-safe-bottom)' }}
       >
         {NAV_TABS.map(({ id, label, Icon }) => {

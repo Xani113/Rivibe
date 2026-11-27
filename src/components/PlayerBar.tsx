@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { usePlayer } from '../context/PlayerContext';
 import { useLibrary } from '../context/LibraryContext';
+import { useKeyboardOpen } from '../hooks/useKeyboardOpen';
 import { formatDuration } from '../utils/formatTime';
 import { SEED_TRACKS } from '../services/seedCatalog';
 
@@ -53,9 +54,16 @@ export function PlayerBar({ queueOpen, onOpenSheet, onToggleQueue }: PlayerBarPr
 
   const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
   const liked = currentTrack ? tasteProfile.likedTrackIds.includes(currentTrack.id) : false;
+  const keyboardOpen = useKeyboardOpen();
 
   return (
-    <div className="rv-player-dock fixed bottom-14 md:bottom-0 left-0 md:left-[228px] right-0 z-40">
+    <div
+      className={`rv-player-dock fixed bottom-14 md:bottom-0 left-0 md:left-[228px] right-0 z-40 transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+        keyboardOpen
+          ? 'max-md:translate-y-[125%] max-md:opacity-0 max-md:pointer-events-none'
+          : 'translate-y-0 opacity-100'
+      }`}
+    >
       {/* Transient Queue Feedback / Stream Error Toast */}
       {queueToast || playbackNotice ? (
         <div

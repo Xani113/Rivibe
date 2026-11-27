@@ -301,6 +301,16 @@ public final class RiVibeNativeMusicPlugin extends Plugin {
         withController(call, controller -> call.resolve(buildSnapshot(controller)));
     }
 
+    @PluginMethod
+    public void minimizeApp(PluginCall call) {
+        mainHandler.post(() -> {
+            if (getActivity() != null) {
+                getActivity().moveTaskToBack(true);
+            }
+            call.resolve();
+        });
+    }
+
     @Override
     protected void handleOnDestroy() {
         tickerRunning = false;

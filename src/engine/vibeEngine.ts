@@ -229,11 +229,11 @@ export function buildTrackRadioQueue(
   seedTrack: Track,
   catalog: Track[],
   profile: TasteProfile,
-  limit = 16,
+  limit = 42,
 ): Track[] {
   const ranked = rankRecommendations(catalog, profile, {
     limit: Math.max(1, limit - 1),
-    maxPerArtist: 2,
+    maxPerArtist: 3,
     seedTrack,
     excludeIds: new Set([seedTrack.id]),
   });

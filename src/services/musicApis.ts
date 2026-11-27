@@ -459,6 +459,89 @@ function mergePreserveSimilarityOrder(
   return Array.from(byKey.values());
 }
 
+export interface ArtistProfileInfo {
+  name: string;
+  subtitle: string;
+  bio: string;
+  artworkUrl: string;
+  genres: string[];
+  topTracks: Track[];
+  source: 'wikipedia+catalog' | 'catalog';
+}
+
+function isLikelyMusicianWiki(data: { type?: string; description?: string; extract?: string } | null): boolean {
+  if (!data || data.type !== 'standard' || !data.extract) return false;
+  const combined = `${data.description ?? ''} ${data.extract}`.toLowerCase();
+  return /(singer|musician|songwriter|rapper|dj|producer|band|composer|vocalist|music|recording artist|performer)/.test(
+    combined,
+  );
+}
+
+/**
+ * Fetches verified artist metadata (Wikipedia summary + catalog songs across Audius/iTunes/YouTube).
+ */
+export async function fetchArtistProfile(
+  artistName: string,
+  vault: ApiVault,
+  catalogFallback: Track[] = [],
+): Promise<ArtistProfileInfo> {
+  const cleanName = artistName.trim();
+  const wikiCandidates = [
+    `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(`${cleanName} (musician)`)}`,
+    `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(`${cleanName} (singer)`)}`,
+    `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(cleanName)}`,
+  ];
+
+  const [searchedTracks, ...wikiResults] = await Promise.all([
+    searchAllMusic(cleanName, vault, false),
+    ...wikiCandidates.map((url) =>
+      fetchJsonWithTimeout<{
+        type?: string;
+        title?: string;
+        description?: string;
+        extract?: string;
+        thumbnail?: { source?: string };
+      }>(url, 4500),
+    ),
+  ]);
+
+  const normArtist = normalizeText(cleanName);
+  const catalogMatches = catalogFallback.filter((t) =>
+    normalizeText(t.artist).includes(normArtist),
+  );
+  const allTracks = mergeAndDeduplicateTracks([searchedTracks, catalogMatches], false);
+  const topTracks = allTracks.slice(0, 20);
+
+  const wiki = wikiResults.find(isLikelyMusicianWiki);
+  const genres = Array.from(
+    new Set(
+      topTracks
+        .flatMap((t) => t.genres)
+        .filter((g) => g && normalizeText(g) !== 'youtube music'),
+    ),
+  ).slice(0, 5);
+
+  const artworkUrl =
+    wiki?.thumbnail?.source ||
+    topTracks.find((t) => Boolean(t.artworkUrl))?.artworkUrl ||
+    '';
+
+  const fallbackBio =
+    topTracks.length > 0
+      ? `${cleanName} has ${topTracks.length} tracks available across ${genres.length > 0 ? genres.join(', ') : 'live music streams'}.`
+      : `Artist details and tracks for ${cleanName}.`;
+
+  return {
+    name: cleanName,
+    subtitle: wiki?.description || genres[0] || 'Recording Artist',
+    bio: wiki?.extract || fallbackBio,
+    artworkUrl,
+    genres,
+    topTracks,
+    source: wiki ? 'wikipedia+catalog' : 'catalog',
+  };
+}
+
 export async function fetchPersonalizedRecommendations(
   seedTrack: Track,
   mood: MoodId,
@@ -483,14 +566,14 @@ export async function fetchPersonalizedRecommendations(
           artist: primaryArtist,
           title: seedTrack.title,
           mood,
-          limit: 20,
+          limit: 45,
         })
       : Promise.resolve<Track[]>([]),
     recommendViaOptionalBackend(primaryArtist, seedTrack.title, vault),
-    searchYouTubeDirect(`${primaryArtist} ${primaryGenre || 'songs'}`, vault.youtubeApiKey, 8),
-    searchAudius(primaryArtist, 6),
-    primaryGenre ? searchAudius(primaryGenre, 6) : Promise.resolve<Track[]>([]),
-    fullOnly ? Promise.resolve([]) : searchItunes(similarityQuery, 10),
+    searchYouTubeDirect(`${primaryArtist} ${primaryGenre || 'songs'}`, vault.youtubeApiKey, 14),
+    searchAudius(primaryArtist, 12),
+    primaryGenre ? searchAudius(primaryGenre, 10) : Promise.resolve<Track[]>([]),
+    fullOnly ? Promise.resolve([]) : searchItunes(similarityQuery, 18),
   ]);
 
   const prioritized = mergePreserveSimilarityOrder(
@@ -506,12 +589,12 @@ export async function fetchPersonalizedRecommendations(
     fullOnly,
   );
 
-  if (prioritized.length >= 6) {
-    return prioritized;
+  if (prioritized.length >= 25) {
+    return prioritized.slice(0, 50);
   }
 
   const discoveryFallback = await fetchDiscoveryTracks(mood, vault, fullOnly);
-  return mergePreserveSimilarityOrder([prioritized, discoveryFallback], seedTrack, fullOnly);
+  return mergePreserveSimilarityOrder([prioritized, discoveryFallback], seedTrack, fullOnly).slice(0, 50);
 }
 
 function parseLrcSyncedLines(syncedLyrics?: string): LyricLine[] | undefined {

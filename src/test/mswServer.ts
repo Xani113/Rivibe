@@ -76,6 +76,20 @@ export const defaultHandlers = [
     });
   }),
 
+  http.get('https://en.wikipedia.org/api/rest_v1/page/summary/:title', ({ params }) => {
+    const raw = decodeURIComponent(String(params.title || 'Artist'));
+    const clean = raw.replace(/\s*\((musician|singer)\)\s*$/i, '');
+    return HttpResponse.json({
+      type: 'standard',
+      title: clean,
+      description: 'Indian singer-songwriter and playback vocalist',
+      extract: `${clean} is a contemporary recording artist featured in RiVibe catalog tests.`,
+      thumbnail: {
+        source: 'https://example.com/artist-portrait.jpg',
+      },
+    });
+  }),
+
   http.get('/api/music/resolve-full', () => HttpResponse.json({ resolved: null })),
   http.get('/api/music/search', () => HttpResponse.json({ tracks: [] })),
   http.get('/api/music/recommend', () => HttpResponse.json({ tracks: [] })),

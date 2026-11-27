@@ -21,20 +21,30 @@ import {
 } from 'lucide-react';
 import { usePlayer } from '../context/PlayerContext';
 import { useLibrary } from '../context/LibraryContext';
+import { useAnimatedOverlay } from '../hooks/useAnimatedOverlay';
 import { formatDuration } from '../utils/formatTime';
 import { SEED_TRACKS } from '../services/seedCatalog';
+import { QueueList } from './QueueList';
 
 const FALLBACK_ART = SEED_TRACKS[0]?.artworkUrl ?? '';
 
 interface NowPlayingSheetProps {
   isOpen: boolean;
   initialTab?: 'queue' | 'lyrics';
+  isExpanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
+  playlistMenuOpen?: boolean;
+  onPlaylistMenuOpenChange?: (open: boolean) => void;
   onClose: () => void;
 }
 
 export function NowPlayingSheet({
   isOpen,
   initialTab = 'queue',
+  isExpanded,
+  onExpandedChange,
+  playlistMenuOpen,
+  onPlaylistMenuOpenChange,
   onClose,
 }: NowPlayingSheetProps) {
   const {
@@ -52,9 +62,6 @@ export function NowPlayingSheet({
     setInfiniteRadio,
     toggleShuffle,
     cycleRepeatMode,
-    playQueueIndex,
-    removeFromQueue,
-    moveQueueItem,
     clearUpcomingQueue,
     startTrackRadio,
     togglePlay,
@@ -64,24 +71,61 @@ export function NowPlayingSheet({
   } = usePlayer();
   const { tasteProfile, playlists, toggleLike, addTrackToPlaylist } = useLibrary();
 
+  const { shouldRender, isVisible } = useAnimatedOverlay(isOpen, 300);
+
   const [tab, setTab] = useState<'queue' | 'lyrics'>(initialTab);
-  const [mobileExpanded, setMobileExpanded] = useState(initialTab === 'lyrics');
-  const [showPlaylistMenu, setShowPlaylistMenu] = useState(false);
+  const [internalExpanded, setInternalExpanded] = useState(initialTab === 'lyrics');
+  const [internalPlaylistMenu, setInternalPlaylistMenu] = useState(false);
+
+  const mobileExpanded = isExpanded ?? internalExpanded;
+  const setMobileExpanded = (next: boolean | ((prev: boolean) => boolean)) => {
+    const resolved = typeof next === 'function' ? next(mobileExpanded) : next;
+    setInternalExpanded(resolved);
+    onExpandedChange?.(resolved);
+  };
+
+  const showPlaylistMenu = playlistMenuOpen ?? internalPlaylistMenu;
+  const setShowPlaylistMenu = (next: boolean | ((prev: boolean) => boolean)) => {
+    const resolved = typeof next === 'function' ? next(showPlaylistMenu) : next;
+    setInternalPlaylistMenu(resolved);
+    onPlaylistMenuOpenChange?.(resolved);
+  };
+
+  // Interactive gesture offsets for swipe-down minimize & draggable bottom drawer
+  const [sheetDragY, setSheetDragY] = useState(0);
+  const [isDraggingSheet, setIsDraggingSheet] = useState(false);
+  const sheetDragRef = useRef<{ startY: number; startX: number; lastTime: number; active: boolean } | null>(null);
+
+  const [drawerDragY, setDrawerDragY] = useState(0);
+  const [isDraggingDrawer, setIsDraggingDrawer] = useState(false);
+  const drawerDragRef = useRef<{ startY: number; lastTime: number; wasExpanded: boolean } | null>(null);
+
   const closeBtnRef = useRef<HTMLButtonElement>(null);
   const activeLyricRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    setTab(initialTab);
-    setMobileExpanded(initialTab === 'lyrics');
-  }, [initialTab, isOpen]);
+  const lastTrackRef = useRef(currentTrack);
+  if (currentTrack) lastTrackRef.current = currentTrack;
 
   useEffect(() => {
     if (isOpen) {
+      setTab(initialTab);
+      const startExpanded = initialTab === 'lyrics';
+      setInternalExpanded(startExpanded);
+      onExpandedChange?.(startExpanded);
+      setSheetDragY(0);
+      setDrawerDragY(0);
       closeBtnRef.current?.focus();
     } else {
-      setShowPlaylistMenu(false);
+      // Reset drawer & menu cleanly so rapid reopen never reveals a half-open stuck state
+      setInternalExpanded(false);
+      setInternalPlaylistMenu(false);
+      setDrawerDragY(0);
+      setIsDraggingSheet(false);
+      setIsDraggingDrawer(false);
+      sheetDragRef.current = null;
+      drawerDragRef.current = null;
     }
-  }, [isOpen]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTab, isOpen]);
 
   const activeLyricIndex = useMemo(() => {
     const synced = lyrics?.syncedLines;
@@ -125,16 +169,18 @@ export function NowPlayingSheet({
     return null;
   }, [lyrics, activeLyricIndex]);
 
-  if (!isOpen || !currentTrack) return null;
+  const activeTrack = currentTrack ?? lastTrackRef.current;
+  if (!shouldRender || !activeTrack) return null;
 
-  const liked = tasteProfile.likedTrackIds.includes(currentTrack.id);
+  const liked = tasteProfile.likedTrackIds.includes(activeTrack.id);
   const progress = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
   const upcomingTrack =
     queueIndex >= 0 && queueIndex + 1 < queue.length ? queue[queueIndex + 1] : null;
-  const artSrc = currentTrack.artworkUrl || FALLBACK_ART;
+  const artSrc = activeTrack.artworkUrl || FALLBACK_ART;
 
   const handleDialogKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'Escape') return;
+    e.stopPropagation();
     if (showPlaylistMenu) {
       setShowPlaylistMenu(false);
     } else if (mobileExpanded) {
@@ -144,13 +190,123 @@ export function NowPlayingSheet({
     }
   };
 
+  // Swipe down anywhere on upper hero player stage to dismiss Now Playing
+  const handleHeroPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (mobileExpanded) return;
+    const targetEl = e.target as HTMLElement;
+    if (targetEl.closest('input, button, [data-no-sheet-drag]')) return;
+    sheetDragRef.current = {
+      startY: e.clientY,
+      startX: e.clientX,
+      lastTime: Date.now(),
+      active: false,
+    };
+  };
+
+  const handleHeroPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = sheetDragRef.current;
+    if (!drag) return;
+    const dy = e.clientY - drag.startY;
+    const dx = Math.abs(e.clientX - drag.startX);
+    if (!drag.active) {
+      if (dy > 12 && dy > dx * 1.2) {
+        drag.active = true;
+        setIsDraggingSheet(true);
+      } else if (dx > 18) {
+        sheetDragRef.current = null;
+        return;
+      }
+    }
+    if (drag.active) {
+      setSheetDragY(Math.max(0, dy));
+    }
+  };
+
+  const handleHeroPointerEnd = () => {
+    const drag = sheetDragRef.current;
+    sheetDragRef.current = null;
+    if (!drag?.active) return;
+    const elapsed = Math.max(1, Date.now() - drag.lastTime);
+    const velocity = sheetDragY / elapsed;
+    setIsDraggingSheet(false);
+    if (sheetDragY > 110 || velocity > 0.55) {
+      onClose();
+    } else {
+      setSheetDragY(0);
+    }
+  };
+
+  // Interactive drag handle gestures on Up Next / Lyrics bottom sheet
+  const handleDrawerPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    drawerDragRef.current = {
+      startY: e.clientY,
+      lastTime: Date.now(),
+      wasExpanded: mobileExpanded,
+    };
+    setIsDraggingDrawer(true);
+    setDrawerDragY(0);
+  };
+
+  const handleDrawerPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = drawerDragRef.current;
+    if (!drag) return;
+    const dy = e.clientY - drag.startY;
+    if (drag.wasExpanded) {
+      setDrawerDragY(Math.max(0, Math.min(360, dy)));
+    } else {
+      setDrawerDragY(Math.min(0, Math.max(-240, dy)));
+    }
+  };
+
+  const handleDrawerPointerEnd = () => {
+    const drag = drawerDragRef.current;
+    drawerDragRef.current = null;
+    if (!drag) return;
+    const elapsed = Math.max(1, Date.now() - drag.lastTime);
+    const velocity = Math.abs(drawerDragY) / elapsed;
+    setIsDraggingDrawer(false);
+    if (drag.wasExpanded && (drawerDragY > 75 || velocity > 0.5)) {
+      setMobileExpanded(false);
+    } else if (!drag.wasExpanded && (drawerDragY < -55 || velocity > 0.45)) {
+      setMobileExpanded(true);
+    }
+    setDrawerDragY(0);
+  };
+
+  const sheetTransform = !isVisible
+    ? 'translate3d(0, 100%, 0)'
+    : isDraggingSheet && sheetDragY > 0
+      ? `translate3d(0, ${sheetDragY}px, 0)`
+      : 'translate3d(0, 0, 0)';
+
+  const sheetOpacity = !isVisible
+    ? 0
+    : isDraggingSheet && sheetDragY > 0
+      ? Math.max(0.45, 1 - sheetDragY / 620)
+      : 1;
+
   return (
     <div
-      role="dialog"
-      aria-modal="true"
+      role={isOpen ? 'dialog' : undefined}
+      aria-modal={isOpen ? 'true' : undefined}
+      aria-hidden={!isOpen}
+      inert={!isOpen || undefined}
       aria-label="Now playing studio"
       onKeyDown={handleDialogKeyDown}
-      className="fixed inset-0 z-50 bg-[#090b10] flex flex-col overflow-hidden"
+      onPointerDown={handleHeroPointerDown}
+      onPointerMove={handleHeroPointerMove}
+      onPointerUp={handleHeroPointerEnd}
+      onPointerCancel={handleHeroPointerEnd}
+      style={{
+        transform: sheetTransform,
+        opacity: sheetOpacity,
+      }}
+      className={`fixed inset-0 z-50 bg-[#090b10] flex flex-col overflow-hidden ${
+        isDraggingSheet
+          ? ''
+          : 'transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]'
+      } ${!isVisible ? 'pointer-events-none' : ''}`}
     >
       {/* Mobile Full-Bleed Immersive Artwork Hero Backdrop */}
       {artSrc ? (
@@ -172,7 +328,10 @@ export function NowPlayingSheet({
 
       {/* Desktop Ambient Cover Glow */}
       {artSrc ? (
-        <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden hidden md:block opacity-25">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-0 overflow-hidden hidden md:block opacity-25"
+        >
           <img
             src={artSrc}
             alt=""
@@ -201,13 +360,13 @@ export function NowPlayingSheet({
         {/* Center Pill on Mobile / Album Title on Desktop */}
         <div className="order-2 md:order-1 min-w-0 flex-1 md:flex-initial flex justify-center md:block">
           <div className="md:hidden max-w-[210px] px-3.5 py-1.5 rounded-full bg-[rgba(14,18,27,0.58)] backdrop-blur-xl border border-[rgba(255,255,255,0.14)] text-[11px] font-semibold text-[#f4f5f7] truncate text-center">
-            {currentTrack.album || 'Now Playing'}
+            {activeTrack.album || 'Now Playing'}
           </div>
           <div className="hidden md:block min-w-0">
             <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#22d3a6]">
               Now Playing
             </span>
-            <h2 className="text-sm font-semibold text-[#f4f5f7] truncate">{currentTrack.album}</h2>
+            <h2 className="text-sm font-semibold text-[#f4f5f7] truncate">{activeTrack.album}</h2>
           </div>
         </div>
 
@@ -224,7 +383,7 @@ export function NowPlayingSheet({
           </button>
 
           {showPlaylistMenu ? (
-            <div className="absolute right-0 top-12 z-40 w-52 p-1.5 rounded-2xl rv-glass-overlay border shadow-2xl space-y-0.5">
+            <div className="rv-tab-enter absolute right-0 top-12 z-50 w-52 p-1.5 rounded-2xl rv-glass-overlay border shadow-2xl space-y-0.5">
               <div className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[rgba(244,245,247,0.52)]">
                 Save to Playlist
               </div>
@@ -233,7 +392,7 @@ export function NowPlayingSheet({
                   key={pl.id}
                   type="button"
                   onClick={() => {
-                    addTrackToPlaylist(pl.id, currentTrack);
+                    addTrackToPlaylist(pl.id, activeTrack);
                     setShowPlaylistMenu(false);
                   }}
                   className="w-full px-2.5 py-2 rounded-xl text-xs font-medium text-[#f4f5f7] hover:bg-[rgba(34,211,166,0.16)] hover:text-[#22d3a6] text-left truncate"
@@ -254,32 +413,32 @@ export function NowPlayingSheet({
           <div className="hidden md:block w-64 h-64 lg:w-80 lg:h-80 mx-auto rounded-2xl overflow-hidden bg-[#161b26] shadow-2xl border border-[rgba(255,255,255,0.12)]">
             <img
               src={artSrc}
-              alt={`${currentTrack.album} artwork`}
+              alt={`${activeTrack.album} artwork`}
               className="w-full h-full object-cover"
             />
           </div>
 
           {/* Mobile Spacer Above Scrim */}
-          <div className="flex-1 min-h-[14dvh] md:hidden" aria-hidden="true" />
+          <div className="flex-1 min-h-[12dvh] md:hidden" aria-hidden="true" />
 
           {/* Title, Artist & Floating Frosted Heart */}
           <div className="w-full flex items-end justify-between gap-3">
             <div className="min-w-0 flex-1">
               <div className="md:hidden text-[11px] font-medium uppercase tracking-[0.12em] text-[rgba(244,245,247,0.62)] truncate mb-0.5">
-                Playing From · {currentTrack.album || 'Single'}
+                Playing From · {activeTrack.album || 'Single'}
               </div>
               <h3 className="text-[22px] sm:text-2xl font-bold text-[#f4f5f7] leading-tight line-clamp-2 text-balance">
-                {currentTrack.title}
+                {activeTrack.title}
               </h3>
               <p className="text-sm text-[rgba(244,245,247,0.72)] truncate mt-0.5">
-                {currentTrack.artist}
+                {activeTrack.artist}
               </p>
             </div>
 
             <button
               type="button"
               aria-label={liked ? 'Unlike track' : 'Like track'}
-              onClick={() => toggleLike(currentTrack)}
+              onClick={() => toggleLike(activeTrack)}
               className={`rv-interactive-btn w-11 h-11 rounded-2xl flex items-center justify-center border shrink-0 backdrop-blur-md ${
                 liked
                   ? 'bg-[rgba(34,211,166,0.2)] border-[rgba(34,211,166,0.45)] text-[#22d3a6]'
@@ -293,12 +452,12 @@ export function NowPlayingSheet({
             </button>
           </div>
 
-          {/* Quick Frosted Action Strip (Real Queue, Playlist & Autoplay Actions) */}
+          {/* Quick Frosted Action Strip */}
           <div className="w-full flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
             <button
               type="button"
               aria-label="Build radio queue from track"
-              onClick={() => void startTrackRadio(currentTrack)}
+              onClick={() => void startTrackRadio(activeTrack)}
               className="rv-interactive-btn h-10 px-3.5 rounded-full bg-[rgba(255,255,255,0.09)] hover:bg-[rgba(255,255,255,0.16)] backdrop-blur-md border border-[rgba(255,255,255,0.12)] text-xs font-semibold text-[#f4f5f7] inline-flex items-center gap-1.5 shrink-0"
             >
               <Radio className="w-3.5 h-3.5 text-[#22d3a6]" aria-hidden="true" />
@@ -427,27 +586,41 @@ export function NowPlayingSheet({
           </div>
         </div>
 
-        {/* Column 2: Mobile Expandable Peek Sheet / Desktop Queue & Lyrics Panel */}
+        {/* Column 2: Draggable Up Next & Lyrics Bottom Sheet (< md) / Studio Panel (>= md) */}
         <section
+          data-no-sheet-drag
           aria-label="Up Next and Lyrics panel"
-          className={`flex flex-col border-[rgba(255,255,255,0.12)] overflow-hidden transition-[transform,opacity,background-color] duration-200 md:static md:h-[500px] md:rounded-2xl md:border md:bg-[rgba(15,19,28,0.86)] md:backdrop-blur-2xl ${
+          style={{
+            paddingBottom: 'var(--rv-safe-bottom)',
+            transform: isDraggingDrawer && drawerDragY !== 0 ? `translate3d(0, ${drawerDragY}px, 0)` : undefined,
+          }}
+          className={`flex flex-col border-[rgba(255,255,255,0.12)] overflow-hidden md:static md:h-[520px] md:rounded-2xl md:border md:bg-[rgba(15,19,28,0.86)] md:backdrop-blur-2xl ${
+            isDraggingDrawer
+              ? ''
+              : 'transition-[transform,opacity,background-color] duration-280 ease-[cubic-bezier(0.22,1,0.36,1)]'
+          } ${
             mobileExpanded
               ? 'max-md:fixed max-md:inset-x-0 max-md:bottom-0 max-md:top-[max(58px,var(--rv-safe-top))] max-md:z-40 rounded-t-[28px] border-t bg-[rgba(11,14,22,0.98)] backdrop-blur-2xl'
               : 'rounded-t-[24px] border-t bg-[rgba(14,18,27,0.92)] backdrop-blur-2xl shadow-[0_-12px_36px_rgba(0,0,0,0.45)] md:shadow-none shrink-0'
           }`}
-          style={{ paddingBottom: 'var(--rv-safe-bottom)' }}
         >
-          {/* Mobile Pull / Collapse Handle */}
-          <div className="md:hidden pt-2 pb-1 flex justify-center">
+          {/* Draggable Mobile Grab Handle */}
+          <div
+            onPointerDown={handleDrawerPointerDown}
+            onPointerMove={handleDrawerPointerMove}
+            onPointerUp={handleDrawerPointerEnd}
+            onPointerCancel={handleDrawerPointerEnd}
+            className="md:hidden touch-none pt-2.5 pb-1 flex justify-center cursor-grab active:cursor-grabbing"
+          >
             <button
               type="button"
               aria-label={
                 mobileExpanded ? 'Collapse queue and lyrics panel' : 'Expand queue and lyrics panel'
               }
               onClick={() => setMobileExpanded((v) => !v)}
-              className="px-6 py-1 rounded-full flex items-center justify-center group"
+              className="px-8 py-1 rounded-full flex items-center justify-center group"
             >
-              <span className="w-9 h-1 rounded-full bg-[rgba(255,255,255,0.28)] group-hover:bg-[rgba(255,255,255,0.48)]" />
+              <span className="w-9 h-1 rounded-full bg-[rgba(255,255,255,0.3)] group-hover:bg-[rgba(255,255,255,0.5)]" />
             </button>
           </div>
 
@@ -469,7 +642,7 @@ export function NowPlayingSheet({
                     setTab(id);
                     setMobileExpanded(true);
                   }}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-colors ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-colors duration-150 ${
                     tab === id
                       ? 'bg-[#22d3a6] text-[#042019]'
                       : 'text-[rgba(244,245,247,0.68)] hover:text-[#f4f5f7] hover:bg-[rgba(255,255,255,0.06)]'
@@ -529,7 +702,7 @@ export function NowPlayingSheet({
               ) : tab === 'queue' && upcomingTrack ? (
                 <>
                   <div className="text-[10px] font-bold uppercase tracking-wider text-[#22d3a6]">
-                    Next Up
+                    Next Up · {queue.length} queued
                   </div>
                   <div className="text-xs font-medium text-[#f4f5f7] truncate">
                     {upcomingTrack.title} ·{' '}
@@ -549,118 +722,52 @@ export function NowPlayingSheet({
                 </>
               ) : (
                 <div className="text-xs text-[rgba(244,245,247,0.62)] truncate">
-                  Tap to view queue ({queue.length}) and lyrics
+                  Tap or swipe up for queue ({queue.length}) & lyrics
                 </div>
               )}
             </button>
           ) : null}
 
-          {/* Full Scrollable Queue & Synced Lyrics Body */}
+          {/* Full Scrollable Queue & Synced Lyrics Body with Smooth Tab Cross-Fade */}
           <div
             className={`flex-1 overflow-y-auto rv-scroll p-3 ${
               mobileExpanded ? 'block' : 'hidden md:block'
             }`}
           >
-            {tab === 'queue' ? (
-              <ul role="list" className="space-y-1">
-                {queue.map((item, idx) => {
-                  const isCurrent = idx === queueIndex;
-                  return (
-                    <li
-                      key={`${item.id}-${idx}`}
-                      className={`flex items-center gap-2 p-2 rounded-xl border ${
-                        isCurrent
-                          ? 'bg-[rgba(34,211,166,0.12)] border-[rgba(34,211,166,0.3)]'
-                          : 'border-transparent hover:bg-[rgba(255,255,255,0.05)]'
-                      }`}
-                    >
+            <div key={tab} className="rv-tab-enter">
+              {tab === 'queue' ? (
+                <QueueList />
+              ) : isLoadingLyrics ? (
+                <div className="py-12 text-center text-xs text-[rgba(244,245,247,0.58)]">
+                  Loading lyrics...
+                </div>
+              ) : lyrics?.syncedLines && lyrics.syncedLines.length > 0 ? (
+                <div className="space-y-1.5 py-2">
+                  {lyrics.syncedLines.map((line, i) => {
+                    const active = i === activeLyricIndex;
+                    return (
                       <button
+                        key={`${line.timeSec}-${i}`}
+                        ref={active ? activeLyricRef : undefined}
                         type="button"
-                        onClick={() => void playQueueIndex(idx)}
-                        className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
+                        onClick={() => seekTo(line.timeSec)}
+                        className={`block w-full text-left px-3 py-1.5 rounded-lg transition-colors duration-150 ${
+                          active
+                            ? 'text-base font-bold text-[#22d3a6] bg-[rgba(34,211,166,0.08)]'
+                            : 'text-sm font-medium text-[rgba(244,245,247,0.52)] hover:text-[#f4f5f7]'
+                        }`}
                       >
-                        <img
-                          src={item.artworkUrl || FALLBACK_ART}
-                          alt=""
-                          className="w-9 h-9 rounded-lg object-cover shrink-0 bg-[#181d29]"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div
-                            className={`text-xs font-semibold truncate ${
-                              isCurrent ? 'text-[#22d3a6]' : 'text-[#f4f5f7]'
-                            }`}
-                          >
-                            {item.title}
-                          </div>
-                          <div className="text-[11px] text-[rgba(244,245,247,0.55)] truncate">
-                            {item.artist} · {formatDuration(item.durationSec)}
-                          </div>
-                        </div>
+                        {line.text}
                       </button>
-
-                      <div className="flex items-center gap-0.5 shrink-0">
-                        <button
-                          type="button"
-                          aria-label={`Move ${item.title} up in queue`}
-                          disabled={idx === 0}
-                          onClick={() => moveQueueItem(idx, idx - 1)}
-                          className="w-7 h-7 rounded-md hover:bg-[rgba(255,255,255,0.08)] flex items-center justify-center text-[rgba(244,245,247,0.55)] disabled:opacity-25"
-                        >
-                          <ChevronUp className="w-3.5 h-3.5" aria-hidden="true" />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={`Move ${item.title} down in queue`}
-                          disabled={idx === queue.length - 1}
-                          onClick={() => moveQueueItem(idx, idx + 1)}
-                          className="w-7 h-7 rounded-md hover:bg-[rgba(255,255,255,0.08)] flex items-center justify-center text-[rgba(244,245,247,0.55)] disabled:opacity-25"
-                        >
-                          <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={`Remove ${item.title} from queue`}
-                          title="Remove from queue"
-                          onClick={() => removeFromQueue(idx)}
-                          className="w-7 h-7 rounded-md hover:bg-[rgba(248,113,113,0.16)] flex items-center justify-center text-[rgba(244,245,247,0.55)] hover:text-[#f87171]"
-                        >
-                          <X className="w-3.5 h-3.5" aria-hidden="true" />
-                        </button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : isLoadingLyrics ? (
-              <div className="py-12 text-center text-xs text-[rgba(244,245,247,0.58)]">
-                Loading lyrics...
-              </div>
-            ) : lyrics?.syncedLines && lyrics.syncedLines.length > 0 ? (
-              <div className="space-y-1.5 py-2">
-                {lyrics.syncedLines.map((line, i) => {
-                  const active = i === activeLyricIndex;
-                  return (
-                    <button
-                      key={`${line.timeSec}-${i}`}
-                      ref={active ? activeLyricRef : undefined}
-                      type="button"
-                      onClick={() => seekTo(line.timeSec)}
-                      className={`block w-full text-left px-3 py-1.5 rounded-lg transition-colors ${
-                        active
-                          ? 'text-base font-bold text-[#22d3a6] bg-[rgba(34,211,166,0.08)]'
-                          : 'text-sm font-medium text-[rgba(244,245,247,0.52)] hover:text-[#f4f5f7]'
-                      }`}
-                    >
-                      {line.text}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="text-sm leading-relaxed text-[rgba(244,245,247,0.84)] whitespace-pre-line px-1">
-                {lyrics?.lyrics}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-sm leading-relaxed text-[rgba(244,245,247,0.84)] whitespace-pre-line px-1">
+                  {lyrics?.lyrics}
+                </div>
+              )}
+            </div>
           </div>
         </section>
       </div>

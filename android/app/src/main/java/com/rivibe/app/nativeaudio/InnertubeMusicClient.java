@@ -125,7 +125,7 @@ public final class InnertubeMusicClient {
             int limit
     ) throws IOException, JSONException {
         ensureVisitorData();
-        int targetLimit = Math.max(1, Math.min(limit, 35));
+        int targetLimit = Math.max(1, Math.min(limit, 50));
         JSONArray out = new JSONArray();
         Set<String> seen = new HashSet<>();
 
@@ -185,18 +185,24 @@ public final class InnertubeMusicClient {
             }
         }
 
-        if (out.length() < Math.min(targetLimit, 12)) {
+        if (out.length() < Math.min(targetLimit, 32)) {
             String fallbackQuery;
             if (artist != null && !artist.trim().isEmpty()) {
-                // Use clean primary artist name so song filter returns tracks by same/similar artists
                 String primaryArtist = artist.split("[,&]|(?i)\\s+(?:feat|ft)\\.?\\s+")[0].trim();
                 fallbackQuery = primaryArtist.isEmpty() ? artist.trim() : primaryArtist;
             } else {
                 String moodKey = mood == null ? "all" : mood.trim().toLowerCase(Locale.US);
                 fallbackQuery = MOOD_QUERY_MAP.getOrDefault(moodKey, MOOD_QUERY_MAP.get("all"));
             }
-            JSONArray searched = searchSongs(fallbackQuery, targetLimit);
+            JSONArray searched = searchSongs(fallbackQuery, Math.min(targetLimit, 25));
             appendUnique(out, searched, targetLimit);
+
+            if (out.length() < Math.min(targetLimit, 32)) {
+                String moodKey = mood == null ? "all" : mood.trim().toLowerCase(Locale.US);
+                String moodQuery = MOOD_QUERY_MAP.getOrDefault(moodKey, MOOD_QUERY_MAP.get("all"));
+                JSONArray moodSearched = searchSongs(moodQuery, Math.min(targetLimit - out.length(), 25));
+                appendUnique(out, moodSearched, targetLimit);
+            }
         }
 
         return out;
