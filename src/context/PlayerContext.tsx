@@ -8,10 +8,9 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { ArtistSpotlight, LyricsResult, RadioStation, Track } from '../types/music';
+import type { LyricsResult, RepeatMode, Track } from '../types/music';
 import { useLibrary } from './LibraryContext';
 import {
-  fetchArtistSpotlight,
   fetchLyrics,
   fetchPersonalizedRecommendations,
   resolveFullSongTrack,
@@ -21,10 +20,10 @@ import {
 import { getNativeMusicPlugin } from '../services/nativeMusicBridge';
 import { buildTrackRadioQueue, rankRecommendations } from '../engine/vibeEngine';
 import { SEED_TRACKS } from '../services/seedCatalog';
+import { loadSavedQueue, saveQueueState } from '../services/storage';
 
 interface PlayerContextValue {
   currentTrack: Track | null;
-  currentRadioStation: RadioStation | null;
   activeYoutubeVideoId: string | null;
   youtubeSeekTarget: number | null;
   queue: Track[];
@@ -34,15 +33,24 @@ interface PlayerContextValue {
   duration: number;
   volume: number;
   isMuted: boolean;
-  playbackNotice: string | null;
+  shuffle: boolean;
+  repeatMode: RepeatMode;
   infiniteRadio: boolean;
-  setInfiniteRadio: (enabled: boolean) => void;
+  playbackNotice: string | null;
+  queueToast: string | null;
   lyrics: LyricsResult | null;
   isLoadingLyrics: boolean;
-  artistSpotlight: ArtistSpotlight | null;
+  setInfiniteRadio: (enabled: boolean) => void;
+  toggleShuffle: () => void;
+  cycleRepeatMode: () => void;
   playTrack: (track: Track, contextTracks?: Track[]) => Promise<void>;
+  playQueueIndex: (index: number) => Promise<void>;
+  addToQueue: (track: Track) => void;
+  playNext: (track: Track) => void;
+  removeFromQueue: (index: number) => void;
+  moveQueueItem: (fromIndex: number, toIndex: number) => void;
+  clearUpcomingQueue: () => void;
   startTrackRadio: (seedTrack: Track) => Promise<void>;
-  playRadioStation: (station: RadioStation) => Promise<void>;
   togglePlay: () => Promise<void>;
   nextTrack: (userSkipped?: boolean) => Promise<void>;
   prevTrack: () => Promise<void>;
@@ -50,6 +58,7 @@ interface PlayerContextValue {
   setVolume: (vol: number) => void;
   toggleMute: () => void;
   clearNotice: () => void;
+  clearQueueToast: () => void;
   handleYoutubeProgress: (curSec: number, durSec: number) => void;
   handleYoutubeStateSync: (playing: boolean) => void;
   handleYoutubeEnded: () => void;
@@ -64,42 +73,58 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     tasteProfile,
     apiVault,
     activeMood,
-    fullOnly,
     recordPlay,
     recordComplete,
     recordSkip,
     registerTracks,
   } = useLibrary();
 
+  const initialSavedQueue = useMemo(() => loadSavedQueue(), []);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const userInitiatedRef = useRef(false);
   const activeNativeRef = useRef(false);
-  const [currentTrack, setCurrentTrack] = useState<Track | null>(() => SEED_TRACKS[0] ?? null);
-  const [currentRadioStation, setCurrentRadioStation] = useState<RadioStation | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  const [queue, setQueue] = useState<Track[]>(
+    () => initialSavedQueue?.queue ?? SEED_TRACKS.slice(0, 6),
+  );
+  const [queueIndex, setQueueIndex] = useState(() => initialSavedQueue?.queueIndex ?? 0);
+  const [currentTrack, setCurrentTrack] = useState<Track | null>(() => {
+    if (initialSavedQueue) {
+      return initialSavedQueue.queue[initialSavedQueue.queueIndex] ?? initialSavedQueue.queue[0] ?? null;
+    }
+    return SEED_TRACKS[0] ?? null;
+  });
   const [activeYoutubeVideoId, setActiveYoutubeVideoId] = useState<string | null>(null);
   const [youtubeSeekTarget, setYoutubeSeekTarget] = useState<number | null>(null);
-  const [queue, setQueue] = useState<Track[]>(() => SEED_TRACKS);
-  const [queueIndex, setQueueIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(() => SEED_TRACKS[0]?.durationSec ?? 185);
+  const [duration, setDuration] = useState(() => {
+    const initialTrack = initialSavedQueue
+      ? initialSavedQueue.queue[initialSavedQueue.queueIndex]
+      : SEED_TRACKS[0];
+    return initialTrack?.durationSec ?? 185;
+  });
   const [volume, setVolumeState] = useState(0.85);
   const [isMuted, setIsMuted] = useState(false);
-  const [playbackNotice, setPlaybackNotice] = useState<string | null>(null);
+  const [shuffle, setShuffle] = useState(false);
+  const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
   const [infiniteRadio, setInfiniteRadio] = useState(true);
+  const [playbackNotice, setPlaybackNotice] = useState<string | null>(null);
+  const [queueToast, setQueueToast] = useState<string | null>(null);
   const [lyrics, setLyrics] = useState<LyricsResult | null>(null);
   const [isLoadingLyrics, setIsLoadingLyrics] = useState(false);
-  const [artistSpotlight, setArtistSpotlight] = useState<ArtistSpotlight | null>(null);
 
   const stateRef = useRef({
     currentTrack,
     queue,
     queueIndex,
     isPlaying,
+    shuffle,
+    repeatMode,
     infiniteRadio,
     catalog,
     tasteProfile,
-    currentRadioStation,
     activeYoutubeVideoId,
   });
   stateRef.current = {
@@ -107,12 +132,47 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     queue,
     queueIndex,
     isPlaying,
+    shuffle,
+    repeatMode,
     infiniteRadio,
     catalog,
     tasteProfile,
-    currentRadioStation,
     activeYoutubeVideoId,
   };
+
+  const showQueueToast = useCallback((message: string) => {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    setQueueToast(message);
+    toastTimerRef.current = window.setTimeout(() => {
+      setQueueToast(null);
+      toastTimerRef.current = null;
+    }, 2600);
+  }, []);
+
+  const clearQueueToast = useCallback(() => {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+    setQueueToast(null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    };
+  }, []);
+
+  // Persist active queue cleanly across app restarts
+  useEffect(() => {
+    if (queue.length > 0) {
+      saveQueueState(queue, queueIndex);
+    } else {
+      saveQueueState([], 0);
+    }
+  }, [queue, queueIndex]);
 
   const getAudio = useCallback((): HTMLAudioElement => {
     if (!audioRef.current) {
@@ -122,20 +182,33 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return audioRef.current;
   }, [volume]);
 
-  // Promote default track to the first live FULL stream once catalog loads (before user plays)
+  // Promote placeholder seed track to first live full stream when catalog hydrates
   useEffect(() => {
     if (userInitiatedRef.current || isPlaying) return;
     if (currentTrack && currentTrack.source !== 'seed' && currentTrack.streamType !== 'none') return;
-    const firstFull = catalog.find(
-      (t) => t.source !== 'seed' && (t.streamType === 'full' || t.streamType === 'youtube'),
-    );
+    const livePool = catalog.filter((t) => t.source !== 'seed' && t.streamType !== 'none');
+    const firstFull =
+      livePool.find((t) => t.streamType === 'full' || t.streamType === 'youtube') ?? livePool[0];
     if (firstFull) {
+      const idx = Math.max(0, livePool.findIndex((t) => t.id === firstFull.id));
       setCurrentTrack(firstFull);
       setDuration(firstFull.durationSec || 180);
-      setQueue(catalog);
-      setQueueIndex(Math.max(0, catalog.findIndex((t) => t.id === firstFull.id)));
+      setQueue(livePool.slice(0, 18));
+      setQueueIndex(Math.min(idx, Math.max(0, Math.min(livePool.length, 18) - 1)));
     }
   }, [catalog, currentTrack, isPlaying]);
+
+  const stopAllPlaybackHardware = useCallback(() => {
+    const audio = getAudio();
+    audio.pause();
+    if (activeNativeRef.current) {
+      const nativePlugin = getNativeMusicPlugin();
+      if (nativePlugin) void nativePlugin.stop();
+      activeNativeRef.current = false;
+    }
+    setActiveYoutubeVideoId(null);
+    setYoutubeSeekTarget(null);
+  }, [getAudio]);
 
   const loadAudioSource = useCallback(
     async (track: Track) => {
@@ -173,7 +246,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setActiveYoutubeVideoId(null);
         setYoutubeSeekTarget(null);
         setCurrentTrack(playableTrack);
-        setCurrentRadioStation(null);
         setCurrentTime(0);
         setDuration(playableTrack.durationSec || 200);
         setPlaybackNotice(null);
@@ -181,7 +253,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (!playableTrack.youtubeVideoId && !playableTrack.audioUrl) {
           activeNativeRef.current = false;
           setIsPlaying(false);
-          setPlaybackNotice(`No playable stream found for "${playableTrack.title}" right now.`);
+          setPlaybackNotice(`No playable stream found for "${playableTrack.title}".`);
           return;
         }
 
@@ -230,7 +302,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         audio.pause();
         registerTracks([playableTrack]);
         setCurrentTrack(playableTrack);
-        setCurrentRadioStation(null);
         setActiveYoutubeVideoId(playableTrack.youtubeVideoId);
         setYoutubeSeekTarget(null);
         setCurrentTime(0);
@@ -241,7 +312,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
 
       if (!playableTrack.audioUrl) {
-        // Prefer full-length Audius match first, only falling back to 30s iTunes preview
         const audiusMatches = await searchAudius(`${playableTrack.artist} ${playableTrack.title}`, 3);
         const fullMatch = audiusMatches.find((m) => Boolean(m.audioUrl));
         if (fullMatch) {
@@ -269,14 +339,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setActiveYoutubeVideoId(null);
       setYoutubeSeekTarget(null);
       setCurrentTrack(playableTrack);
-      setCurrentRadioStation(null);
       setCurrentTime(0);
       setDuration(playableTrack.durationSec || 30);
 
       if (!playableTrack.audioUrl) {
         setIsPlaying(false);
         setPlaybackNotice(
-          `Add a YouTube Data API v3 key in API Keys to play "${playableTrack.title}" in full, or play any FULL Audius track.`,
+          `Add a YouTube key in Settings to unlock "${playableTrack.title}" in browser, or use the Android APK.`,
         );
         return;
       }
@@ -289,7 +358,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setIsPlaying(true);
       } catch {
         setIsPlaying(false);
-        setPlaybackNotice('Tap Play to start audio in your browser.');
+        setPlaybackNotice('Tap Play to start audio.');
       }
     },
     [apiVault, getAudio, registerTracks],
@@ -297,84 +366,264 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const playTrack = useCallback(
     async (track: Track, contextTracks?: Track[]) => {
+      userInitiatedRef.current = true;
       const baseList =
         contextTracks && contextTracks.length > 0
           ? contextTracks
           : buildTrackRadioQueue(track, catalog, tasteProfile, 16);
 
-      const idx = Math.max(
-        0,
-        baseList.findIndex((t) => t.id === track.id),
-      );
-      const nextQueue = baseList[idx]?.id === track.id ? baseList : [track, ...baseList];
+      const idx = baseList.findIndex((t) => t.id === track.id);
+      const nextQueue = idx >= 0 ? baseList : [track, ...baseList];
+      const nextIdx = idx >= 0 ? idx : 0;
 
+      stateRef.current.queue = nextQueue;
+      stateRef.current.queueIndex = nextIdx;
       setQueue(nextQueue);
-      setQueueIndex(baseList[idx]?.id === track.id ? idx : 0);
+      setQueueIndex(nextIdx);
       recordPlay(track);
       await loadAudioSource(track);
-    },
-    [catalog, loadAudioSource, recordPlay, tasteProfile],
-  );
 
-  const startTrackRadio = useCallback(
-    async (seedTrack: Track) => {
-      const initialQueue = buildTrackRadioQueue(seedTrack, catalog, tasteProfile, 16);
-      setQueue(initialQueue);
-      setQueueIndex(0);
-      recordPlay(seedTrack);
-      await loadAudioSource(seedTrack);
-
-      const fresh = await fetchPersonalizedRecommendations(seedTrack, activeMood, apiVault, fullOnly);
-      registerTracks(fresh);
-      const enrichedQueue = buildTrackRadioQueue(seedTrack, [...fresh, ...catalog], tasteProfile, 18);
-      setQueue(enrichedQueue);
-    },
-    [activeMood, apiVault, catalog, fullOnly, loadAudioSource, recordPlay, registerTracks, tasteProfile],
-  );
-
-  const playRadioStation = useCallback(
-    async (station: RadioStation) => {
-      const audio = getAudio();
-      const nativePlugin = getNativeMusicPlugin();
-      setActiveYoutubeVideoId(null);
-      setCurrentRadioStation(station);
-      setPlaybackNotice(null);
-      setCurrentTime(0);
-      setDuration(0);
-
-      if (nativePlugin) {
-        audio.pause();
-        activeNativeRef.current = true;
-        try {
-          const snap = await nativePlugin.playTrack({
-            trackId: station.id,
-            title: station.name,
-            artist: `Live Radio · ${station.country}`,
-            album: 'Live Vibe Radio',
-            artworkUrl: station.favicon || undefined,
-            audioUrl: station.streamUrl,
-            isLiveStream: true,
+      // Background Velune-style Up Next enrichment when launched without fixed context
+      if (!contextTracks || contextTracks.length <= 1) {
+        void fetchPersonalizedRecommendations(track, activeMood, apiVault, false).then((fresh) => {
+          if (fresh.length === 0) return;
+          registerTracks(fresh);
+          setQueue((curr) => {
+            if (curr.length > 12 || curr[stateRef.current.queueIndex]?.id !== track.id) return curr;
+            const existingIds = new Set(curr.map((t) => t.id));
+            const additions = fresh.filter((f) => !existingIds.has(f.id)).slice(0, 12);
+            const updated = [...curr, ...additions];
+            stateRef.current.queue = updated;
+            return updated;
           });
-          setIsPlaying(snap?.isPlaying ?? true);
-        } catch {
-          activeNativeRef.current = false;
-          setIsPlaying(false);
-          setPlaybackNotice(`Could not start live stream for ${station.name}. Try another station.`);
-        }
+        });
+      }
+    },
+    [activeMood, apiVault, catalog, loadAudioSource, recordPlay, registerTracks, tasteProfile],
+  );
+
+  const playQueueIndex = useCallback(
+    async (index: number) => {
+      userInitiatedRef.current = true;
+      const q = stateRef.current.queue;
+      const target = q[index];
+      if (!target) return;
+      stateRef.current.queueIndex = index;
+      setQueueIndex(index);
+      recordPlay(target);
+      await loadAudioSource(target);
+    },
+    [loadAudioSource, recordPlay],
+  );
+
+  const addToQueue = useCallback(
+    (track: Track) => {
+      userInitiatedRef.current = true;
+      registerTracks([track]);
+      const currQ = stateRef.current.queue;
+      if (currQ.length === 0 || !stateRef.current.currentTrack) {
+        const nextQ = [track];
+        stateRef.current.queue = nextQ;
+        stateRef.current.queueIndex = 0;
+        setQueue(nextQ);
+        setQueueIndex(0);
+        setCurrentTrack(track);
+        setDuration(track.durationSec || 180);
+      } else {
+        const nextQ = [...currQ, track];
+        stateRef.current.queue = nextQ;
+        setQueue(nextQ);
+      }
+      showQueueToast(`Added "${track.title}" to queue`);
+    },
+    [registerTracks, showQueueToast],
+  );
+
+  const playNext = useCallback(
+    (track: Track) => {
+      userInitiatedRef.current = true;
+      registerTracks([track]);
+      const currQ = stateRef.current.queue;
+      const idx = stateRef.current.queueIndex;
+      if (currQ.length === 0 || !stateRef.current.currentTrack) {
+        const nextQ = [track];
+        stateRef.current.queue = nextQ;
+        stateRef.current.queueIndex = 0;
+        setQueue(nextQ);
+        setQueueIndex(0);
+        setCurrentTrack(track);
+        setDuration(track.durationSec || 180);
+      } else {
+        const insertAt = Math.min(currQ.length, idx + 1);
+        const nextQ = [...currQ.slice(0, insertAt), track, ...currQ.slice(insertAt)];
+        stateRef.current.queue = nextQ;
+        setQueue(nextQ);
+      }
+      showQueueToast(`"${track.title}" will play next`);
+    },
+    [registerTracks, showQueueToast],
+  );
+
+  const removeFromQueue = useCallback(
+    (index: number) => {
+      userInitiatedRef.current = true;
+      const q = stateRef.current.queue;
+      const idx = stateRef.current.queueIndex;
+      if (index < 0 || index >= q.length) return;
+
+      const removed = q[index]!;
+      const nextQ = q.filter((_, i) => i !== index);
+
+      if (nextQ.length === 0) {
+        stopAllPlaybackHardware();
+        stateRef.current.queue = [];
+        stateRef.current.queueIndex = 0;
+        stateRef.current.currentTrack = null;
+        setQueue([]);
+        setQueueIndex(0);
+        setCurrentTrack(null);
+        setIsPlaying(false);
+        setCurrentTime(0);
+        setDuration(0);
+        showQueueToast(`Removed "${removed.title}" from queue`);
         return;
       }
 
-      activeNativeRef.current = false;
-      audio.src = station.streamUrl;
-      try {
-        await audio.play();
-        setIsPlaying(true);
-      } catch {
-        setIsPlaying(false);
-        setPlaybackNotice(`Could not start live stream for ${station.name}. Try another station.`);
+      if (index < idx) {
+        const nextIdx = idx - 1;
+        stateRef.current.queue = nextQ;
+        stateRef.current.queueIndex = nextIdx;
+        setQueue(nextQ);
+        setQueueIndex(nextIdx);
+        showQueueToast(`Removed "${removed.title}" from queue`);
+        return;
+      }
+
+      if (index > idx) {
+        stateRef.current.queue = nextQ;
+        setQueue(nextQ);
+        showQueueToast(`Removed "${removed.title}" from queue`);
+        return;
+      }
+
+      // Removing currently active item at idx
+      const nextIdx = Math.min(idx, nextQ.length - 1);
+      const nextTarget = nextQ[nextIdx]!;
+      const wasPlaying = stateRef.current.isPlaying;
+      stateRef.current.queue = nextQ;
+      stateRef.current.queueIndex = nextIdx;
+      setQueue(nextQ);
+      setQueueIndex(nextIdx);
+      showQueueToast(`Removed "${removed.title}" from queue`);
+
+      if (wasPlaying) {
+        recordPlay(nextTarget);
+        void loadAudioSource(nextTarget);
+      } else {
+        setCurrentTrack(nextTarget);
+        setCurrentTime(0);
+        setDuration(nextTarget.durationSec || 180);
       }
     },
-    [getAudio],
+    [loadAudioSource, recordPlay, showQueueToast, stopAllPlaybackHardware],
+  );
+
+  const moveQueueItem = useCallback((fromIndex: number, toIndex: number) => {
+    const q = stateRef.current.queue;
+    const idx = stateRef.current.queueIndex;
+    if (
+      fromIndex < 0 ||
+      fromIndex >= q.length ||
+      toIndex < 0 ||
+      toIndex >= q.length ||
+      fromIndex === toIndex
+    ) {
+      return;
+    }
+    const copy = [...q];
+    const [moved] = copy.splice(fromIndex, 1);
+    if (!moved) return;
+    copy.splice(toIndex, 0, moved);
+
+    let nextIdx = idx;
+    if (fromIndex === idx) {
+      nextIdx = toIndex;
+    } else if (fromIndex < idx && toIndex >= idx) {
+      nextIdx = idx - 1;
+    } else if (fromIndex > idx && toIndex <= idx) {
+      nextIdx = idx + 1;
+    }
+
+    stateRef.current.queue = copy;
+    stateRef.current.queueIndex = nextIdx;
+    setQueue(copy);
+    setQueueIndex(nextIdx);
+  }, []);
+
+  const clearUpcomingQueue = useCallback(() => {
+    const active = stateRef.current.queue[stateRef.current.queueIndex] ?? stateRef.current.currentTrack;
+    const nextQ = active ? [active] : [];
+    stateRef.current.queue = nextQ;
+    stateRef.current.queueIndex = 0;
+    setQueue(nextQ);
+    setQueueIndex(0);
+    showQueueToast('Cleared upcoming queue');
+  }, [showQueueToast]);
+
+  const startTrackRadio = useCallback(
+    async (seedTrack: Track) => {
+      userInitiatedRef.current = true;
+      const initialQueue = buildTrackRadioQueue(seedTrack, catalog, tasteProfile, 16);
+      stateRef.current.queue = initialQueue;
+      stateRef.current.queueIndex = 0;
+      setQueue(initialQueue);
+      setQueueIndex(0);
+      recordPlay(seedTrack);
+      showQueueToast(`Starting radio from "${seedTrack.title}"`);
+      await loadAudioSource(seedTrack);
+
+      const fresh = await fetchPersonalizedRecommendations(seedTrack, activeMood, apiVault, false);
+      registerTracks(fresh);
+      const enrichedQueue = buildTrackRadioQueue(
+        seedTrack,
+        [...fresh, ...catalog],
+        tasteProfile,
+        18,
+      );
+      stateRef.current.queue = enrichedQueue;
+      setQueue(enrichedQueue);
+    },
+    [
+      activeMood,
+      apiVault,
+      catalog,
+      loadAudioSource,
+      recordPlay,
+      registerTracks,
+      showQueueToast,
+      tasteProfile,
+    ],
+  );
+
+  const seekTo = useCallback(
+    (seconds: number) => {
+      const bounded = Math.max(0, Math.min(seconds, duration || 30));
+      const nativePlugin = activeNativeRef.current ? getNativeMusicPlugin() : null;
+      if (nativePlugin) {
+        void nativePlugin.seekTo({ positionSec: bounded });
+        setCurrentTime(bounded);
+        return;
+      }
+      if (stateRef.current.activeYoutubeVideoId) {
+        setYoutubeSeekTarget(bounded);
+        setCurrentTime(bounded);
+        return;
+      }
+      const audio = getAudio();
+      audio.currentTime = bounded;
+      setCurrentTime(bounded);
+    },
+    [duration, getAudio],
   );
 
   const nextTrack = useCallback(
@@ -383,6 +632,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         currentTrack: active,
         queue: q,
         queueIndex: idx,
+        shuffle: isShuffled,
+        repeatMode: rep,
         infiniteRadio: radioOn,
         catalog: cat,
         tasteProfile: tp,
@@ -392,13 +643,31 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         recordSkip(active);
       }
 
+      if (!userSkipped && rep === 'one' && active) {
+        seekTo(0);
+        const nativePlugin = activeNativeRef.current ? getNativeMusicPlugin() : null;
+        if (nativePlugin) {
+          void nativePlugin.resume();
+        } else if (!stateRef.current.activeYoutubeVideoId) {
+          void getAudio().play();
+        }
+        setIsPlaying(true);
+        return;
+      }
+
       if (q.length === 0) return;
 
       let nextIdx = idx + 1;
       let workingQueue = q;
 
-      if (nextIdx >= q.length) {
-        if (radioOn) {
+      if (isShuffled && q.length > 1) {
+        let candidate = Math.floor(Math.random() * q.length);
+        if (candidate === idx) candidate = (idx + 1) % q.length;
+        nextIdx = candidate;
+      } else if (nextIdx >= q.length) {
+        if (rep === 'all') {
+          nextIdx = 0;
+        } else if (radioOn) {
           const existingIds = new Set(q.map((t) => t.id));
           const extra = rankRecommendations(cat, tp, {
             limit: 8,
@@ -407,10 +676,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           }).map((s) => s.track);
           if (extra.length > 0) {
             workingQueue = [...q, ...extra];
+            stateRef.current.queue = workingQueue;
             setQueue(workingQueue);
           } else {
             nextIdx = 0;
           }
+        } else if (!userSkipped) {
+          setIsPlaying(false);
+          return;
         } else {
           nextIdx = 0;
         }
@@ -418,11 +691,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
       const target = workingQueue[nextIdx] ?? workingQueue[0];
       if (!target) return;
-      setQueueIndex(nextIdx < workingQueue.length ? nextIdx : 0);
+      const finalIdx = nextIdx < workingQueue.length ? nextIdx : 0;
+      stateRef.current.queueIndex = finalIdx;
+      setQueueIndex(finalIdx);
       recordPlay(target);
       await loadAudioSource(target);
     },
-    [loadAudioSource, recordPlay, recordSkip],
+    [getAudio, loadAudioSource, recordPlay, recordSkip, seekTo],
   );
 
   const prevTrack = useCallback(async () => {
@@ -448,6 +723,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const prevIdx = idx > 0 ? idx - 1 : q.length - 1;
     const target = q[prevIdx];
     if (!target) return;
+    stateRef.current.queueIndex = prevIdx;
     setQueueIndex(prevIdx);
     recordPlay(target);
     await loadAudioSource(target);
@@ -489,27 +765,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [getAudio, loadAudioSource]);
 
-  const seekTo = useCallback(
-    (seconds: number) => {
-      const bounded = Math.max(0, Math.min(seconds, duration || 30));
-      const nativePlugin = activeNativeRef.current ? getNativeMusicPlugin() : null;
-      if (nativePlugin) {
-        void nativePlugin.seekTo({ positionSec: bounded });
-        setCurrentTime(bounded);
-        return;
-      }
-      if (stateRef.current.activeYoutubeVideoId) {
-        setYoutubeSeekTarget(bounded);
-        setCurrentTime(bounded);
-        return;
-      }
-      const audio = getAudio();
-      audio.currentTime = bounded;
-      setCurrentTime(bounded);
-    },
-    [duration, getAudio],
-  );
-
   const setVolume = useCallback(
     (vol: number) => {
       const clamped = Math.max(0, Math.min(1, vol));
@@ -538,6 +793,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return next;
     });
   }, [getAudio, volume]);
+
+  const toggleShuffle = useCallback(() => {
+    setShuffle((prev) => !prev);
+  }, []);
+
+  const cycleRepeatMode = useCallback(() => {
+    setRepeatMode((prev) => (prev === 'off' ? 'all' : prev === 'all' ? 'one' : 'off'));
+  }, []);
 
   const clearNotice = useCallback(() => setPlaybackNotice(null), []);
 
@@ -568,7 +831,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       );
       return;
     }
-    setPlaybackNotice('YouTube embed restricted by uploader — skipping to next recommended track.');
+    setPlaybackNotice('YouTube embed restricted — skipping to next track.');
     void nextTrack(false);
   }, [getAudio, nextTrack]);
 
@@ -598,7 +861,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const onAudioError = () => {
       if (stateRef.current.activeYoutubeVideoId || activeNativeRef.current) return;
       setIsPlaying(false);
-      setPlaybackNotice('Audio stream unavailable on current source — try another track or add YouTube API key.');
+      setPlaybackNotice('Audio stream unavailable on current source — try another track.');
     };
 
     audio.addEventListener('timeupdate', onTimeUpdate);
@@ -666,8 +929,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!('mediaSession' in navigator) || !currentTrack) return;
     navigator.mediaSession.metadata = new MediaMetadata({
-      title: currentRadioStation ? currentRadioStation.name : currentTrack.title,
-      artist: currentRadioStation ? `Live Radio · ${currentRadioStation.country}` : currentTrack.artist,
+      title: currentTrack.title,
+      artist: currentTrack.artist,
       album: currentTrack.album,
       artwork: currentTrack.artworkUrl
         ? [{ src: currentTrack.artworkUrl, sizes: '512x512', type: 'image/jpeg' }]
@@ -678,24 +941,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     navigator.mediaSession.setActionHandler('pause', () => void togglePlay());
     navigator.mediaSession.setActionHandler('nexttrack', () => void nextTrack(true));
     navigator.mediaSession.setActionHandler('previoustrack', () => void prevTrack());
-  }, [currentTrack, currentRadioStation, isPlaying, nextTrack, prevTrack, togglePlay]);
+  }, [currentTrack, isPlaying, nextTrack, prevTrack, togglePlay]);
 
   useEffect(() => {
-    if (!currentTrack || currentRadioStation) {
+    if (!currentTrack) {
       setLyrics(null);
-      setArtistSpotlight(null);
       return;
     }
     let active = true;
     setIsLoadingLyrics(true);
-    Promise.all([
-      fetchLyrics(currentTrack.artist, currentTrack.title),
-      fetchArtistSpotlight(currentTrack.artist, apiVault),
-    ])
-      .then(([lyr, spotlight]) => {
+    fetchLyrics(currentTrack.artist, currentTrack.title)
+      .then((lyr) => {
         if (!active) return;
         setLyrics(lyr);
-        setArtistSpotlight(spotlight);
       })
       .finally(() => {
         if (active) setIsLoadingLyrics(false);
@@ -704,12 +962,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [currentTrack, currentRadioStation, apiVault]);
+  }, [currentTrack]);
 
   const value = useMemo<PlayerContextValue>(
     () => ({
       currentTrack,
-      currentRadioStation,
       activeYoutubeVideoId,
       youtubeSeekTarget,
       queue,
@@ -719,15 +976,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       duration,
       volume,
       isMuted,
-      playbackNotice,
+      shuffle,
+      repeatMode,
       infiniteRadio,
-      setInfiniteRadio,
+      playbackNotice,
+      queueToast,
       lyrics,
       isLoadingLyrics,
-      artistSpotlight,
+      setInfiniteRadio,
+      toggleShuffle,
+      cycleRepeatMode,
       playTrack,
+      playQueueIndex,
+      addToQueue,
+      playNext,
+      removeFromQueue,
+      moveQueueItem,
+      clearUpcomingQueue,
       startTrackRadio,
-      playRadioStation,
       togglePlay,
       nextTrack,
       prevTrack,
@@ -735,6 +1001,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setVolume,
       toggleMute,
       clearNotice,
+      clearQueueToast,
       handleYoutubeProgress,
       handleYoutubeStateSync,
       handleYoutubeEnded,
@@ -742,7 +1009,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }),
     [
       currentTrack,
-      currentRadioStation,
       activeYoutubeVideoId,
       youtubeSeekTarget,
       queue,
@@ -752,14 +1018,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       duration,
       volume,
       isMuted,
-      playbackNotice,
+      shuffle,
+      repeatMode,
       infiniteRadio,
+      playbackNotice,
+      queueToast,
       lyrics,
       isLoadingLyrics,
-      artistSpotlight,
+      toggleShuffle,
+      cycleRepeatMode,
       playTrack,
+      playQueueIndex,
+      addToQueue,
+      playNext,
+      removeFromQueue,
+      moveQueueItem,
+      clearUpcomingQueue,
       startTrackRadio,
-      playRadioStation,
       togglePlay,
       nextTrack,
       prevTrack,
@@ -767,6 +1042,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setVolume,
       toggleMute,
       clearNotice,
+      clearQueueToast,
       handleYoutubeProgress,
       handleYoutubeStateSync,
       handleYoutubeEnded,

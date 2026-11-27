@@ -207,18 +207,18 @@ export function YouTubeAudioBridge({
   return (
     <div
       aria-label="YouTube full-song player"
-      className="fixed right-3 bottom-36 md:bottom-24 z-30 rounded-2xl rv-pill-glass border border-[rgba(255,244,230,0.22)] overflow-hidden shadow-2xl"
+      className="fixed right-3 bottom-36 md:bottom-24 z-30 rounded-xl rv-glass-overlay border overflow-hidden shadow-2xl"
     >
-      <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-[rgba(18,14,11,0.55)]">
-        <span className="flex items-center gap-1.5 text-[11px] font-medium text-[#fbf7f2] truncate max-w-[165px]">
-          <PlayCircle className="w-3.5 h-3.5 text-[#e87a64] shrink-0" aria-hidden="true" />
+      <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-[#090b10]/85">
+        <span className="flex items-center gap-1.5 text-[11px] font-medium text-[#f4f5f7] truncate max-w-[165px]">
+          <PlayCircle className="w-3.5 h-3.5 text-[#22d3a6] shrink-0" aria-hidden="true" />
           <span className="truncate">{trackTitle || 'Full Song'}</span>
         </span>
         <button
           type="button"
           aria-label={minimized ? 'Expand YouTube player' : 'Minimize YouTube player'}
           onClick={() => setMinimized((v) => !v)}
-          className="w-6 h-6 rounded-full hover:bg-[rgba(255,248,240,0.14)] flex items-center justify-center text-[#fbf7f2]"
+          className="w-6 h-6 rounded-md hover:bg-[rgba(255,255,255,0.12)] flex items-center justify-center text-[#f4f5f7]"
         >
           {minimized ? (
             <ChevronUp className="w-3.5 h-3.5" aria-hidden="true" />

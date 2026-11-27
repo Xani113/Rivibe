@@ -38,6 +38,34 @@ const testTracks: Track[] = [
   },
 ];
 
+const extraTrack: Track = {
+  id: 'trk-3',
+  title: 'Midnight City',
+  artist: 'M83',
+  album: 'Hurry Up',
+  artworkUrl: 'https://example.com/3.jpg',
+  audioUrl: 'https://example.com/3.m4a',
+  streamType: 'full',
+  durationSec: 244,
+  genres: ['Electronic'],
+  moods: ['late-night'],
+  source: 'audius',
+};
+
+const fourthTrack: Track = {
+  id: 'trk-4',
+  title: 'So What',
+  artist: 'Miles Davis',
+  album: 'Kind of Blue',
+  artworkUrl: 'https://example.com/4.jpg',
+  audioUrl: 'https://example.com/4.m4a',
+  streamType: 'full',
+  durationSec: 260,
+  genres: ['Jazz'],
+  moods: ['jazz'],
+  source: 'audius',
+};
+
 function PlayerHarness() {
   const {
     currentTrack,
@@ -45,7 +73,18 @@ function PlayerHarness() {
     isPlaying,
     duration,
     queue,
+    queueIndex,
+    shuffle,
+    repeatMode,
+    queueToast,
     playTrack,
+    addToQueue,
+    playNext,
+    removeFromQueue,
+    moveQueueItem,
+    clearUpcomingQueue,
+    toggleShuffle,
+    cycleRepeatMode,
     togglePlay,
     nextTrack,
     prevTrack,
@@ -60,7 +99,21 @@ function PlayerHarness() {
       <div data-testid="now-dur">{duration}</div>
       <div data-testid="play-state">{isPlaying ? 'playing' : 'paused'}</div>
       <div data-testid="queue-len">{queue.length}</div>
+      <div data-testid="queue-idx">{queueIndex}</div>
+      <div data-testid="queue-ids">{queue.map((t) => t.id).join(',')}</div>
+      <div data-testid="shuffle-state">{String(shuffle)}</div>
+      <div data-testid="repeat-state">{repeatMode}</div>
+      <div data-testid="queue-toast">{queueToast ?? ''}</div>
+
       <button onClick={() => void playTrack(testTracks[0]!, testTracks)}>Play First</button>
+      <button onClick={() => addToQueue(extraTrack)}>Add Third To Queue</button>
+      <button onClick={() => playNext(fourthTrack)}>Play Fourth Next</button>
+      <button onClick={() => removeFromQueue(0)}>Remove Index 0</button>
+      <button onClick={() => removeFromQueue(1)}>Remove Index 1</button>
+      <button onClick={() => moveQueueItem(2, 1)}>Move 2 To 1</button>
+      <button onClick={() => clearUpcomingQueue()}>Clear Queue</button>
+      <button onClick={toggleShuffle}>Shuffle</button>
+      <button onClick={cycleRepeatMode}>Repeat</button>
       <button onClick={() => void togglePlay()}>Toggle</button>
       <button onClick={() => void nextTrack()}>Next</button>
       <button onClick={() => void prevTrack()}>Prev</button>
@@ -69,8 +122,9 @@ function PlayerHarness() {
   );
 }
 
-describe('PlayerContext', () => {
+describe('PlayerContext & Queue Engine', () => {
   beforeEach(() => {
+    localStorage.clear();
     __setNativeBridgeAdapterForTests(null);
   });
 
@@ -114,6 +168,70 @@ describe('PlayerContext', () => {
       await user.click(screen.getByRole('button', { name: 'Toggle' }));
     });
     expect(screen.getByTestId('play-state')).toHaveTextContent('paused');
+  });
+
+  it('supports addToQueue, playNext, reordering, removing before/at/after current index, and clearing queue', async () => {
+    const user = userEvent.setup();
+    render(
+      <LibraryProvider>
+        <PlayerProvider>
+          <PlayerHarness />
+        </PlayerProvider>
+      </LibraryProvider>,
+    );
+
+    // Start 2-track queue at index 0: [trk-1, trk-2]
+    await user.click(screen.getByRole('button', { name: 'Play First' }));
+    expect(screen.getByTestId('queue-ids')).toHaveTextContent('trk-1,trk-2');
+
+    // Add trk-3 to end -> [trk-1, trk-2, trk-3]
+    await user.click(screen.getByRole('button', { name: 'Add Third To Queue' }));
+    expect(screen.getByTestId('queue-ids')).toHaveTextContent('trk-1,trk-2,trk-3');
+    expect(screen.getByTestId('queue-toast')).toHaveTextContent(/Midnight City/i);
+
+    // Play Next trk-4 -> inserts after index 0 -> [trk-1, trk-4, trk-2, trk-3]
+    await user.click(screen.getByRole('button', { name: 'Play Fourth Next' }));
+    expect(screen.getByTestId('queue-ids')).toHaveTextContent('trk-1,trk-4,trk-2,trk-3');
+
+    // Advance to index 1 (trk-4)
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByTestId('now-title')).toHaveTextContent('So What');
+    expect(screen.getByTestId('queue-idx')).toHaveTextContent('1');
+
+    // Remove index 0 (before current): queueIndex decrements to 0, still playing trk-4!
+    await user.click(screen.getByRole('button', { name: 'Remove Index 0' }));
+    expect(screen.getByTestId('queue-ids')).toHaveTextContent('trk-4,trk-2,trk-3');
+    expect(screen.getByTestId('queue-idx')).toHaveTextContent('0');
+    expect(screen.getByTestId('now-title')).toHaveTextContent('So What');
+
+    // Reorder index 2 -> 1 -> [trk-4, trk-3, trk-2]
+    await user.click(screen.getByRole('button', { name: 'Move 2 To 1' }));
+    expect(screen.getByTestId('queue-ids')).toHaveTextContent('trk-4,trk-3,trk-2');
+
+    // Remove currently playing index 0 -> advances cleanly to trk-3!
+    await user.click(screen.getByRole('button', { name: 'Remove Index 0' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-ids')).toHaveTextContent('trk-3,trk-2');
+      expect(screen.getByTestId('now-title')).toHaveTextContent('Midnight City');
+    });
+
+    // Clear upcoming leaves active song
+    await user.click(screen.getByRole('button', { name: 'Clear Queue' }));
+    expect(screen.getByTestId('queue-ids')).toHaveTextContent('trk-3');
+
+    // Remove last item empties queue
+    await user.click(screen.getByRole('button', { name: 'Remove Index 0' }));
+    expect(screen.getByTestId('queue-len')).toHaveTextContent('0');
+    expect(screen.getByTestId('now-title')).toHaveTextContent('none');
+
+    // Shuffle and Repeat cycling
+    await user.click(screen.getByRole('button', { name: 'Shuffle' }));
+    expect(screen.getByTestId('shuffle-state')).toHaveTextContent('true');
+
+    await user.click(screen.getByRole('button', { name: 'Repeat' }));
+    expect(screen.getByTestId('repeat-state')).toHaveTextContent('all');
+    await user.click(screen.getByRole('button', { name: 'Repeat' }));
+    expect(screen.getByTestId('repeat-state')).toHaveTextContent('one');
   });
 
   it('plays full-length songs via Android ExoPlayer without YouTube iframe when native plugin is active', async () => {

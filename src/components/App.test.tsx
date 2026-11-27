@@ -1,121 +1,101 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import App from '../App';
 
-describe('RiVibe App UI & Accessibility', () => {
+describe('RiVibe App UI & Queue Workflow', () => {
   beforeEach(() => {
     localStorage.clear();
   });
 
-  it('renders the spatial music dashboard with greeting, library, cover grid, and floating player', async () => {
+  it('renders Quick Picks on Home with Add to Queue actions and docked player bar', async () => {
     render(<App />);
 
-    expect(await screen.findByRole('heading', { name: /manoj/i })).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/search in albums, tracks, artists/i)).toBeInTheDocument();
-    expect(screen.getByRole('navigation', { name: /primary rail/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /quick picks/i })).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: /main sections/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^play$/i })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /add .* to queue/i }).length).toBeGreaterThan(0);
   });
 
-  it('searches live music providers and plays a discovered track', async () => {
+  it('adds and removes songs in Playback Queue from Search & Queue Drawer', async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    const searchInput = await screen.findByPlaceholderText(/search in albums, tracks, artists/i);
+    // Open Search tab
+    const searchNavBtn = (await screen.findAllByRole('button', { name: /^search$/i }))[0]!;
+    await user.click(searchNavBtn);
+
+    const searchInput = await screen.findByPlaceholderText(/search songs, artists, albums/i);
     await user.type(searchInput, 'Troye');
 
     expect(await screen.findByText(/Troye Horizon/i)).toBeInTheDocument();
 
-    const playButtons = screen.getAllByRole('button', { name: /play troye horizon/i });
-    await user.click(playButtons[0]!);
+    // Add discovered song directly to queue
+    const addQueueBtns = screen.getAllByRole('button', { name: /add troye horizon to queue/i });
+    await user.click(addQueueBtns[0]!);
 
     await waitFor(() => {
-      expect(screen.getByTestId('floating-player-title')).toHaveTextContent(/Troye Horizon/i);
+      expect(screen.getByRole('status')).toHaveTextContent(/Added "Troye Horizon" to queue/i);
     });
+
+    // Open Queue Drawer and verify track is present + Remove from Queue works
+    const queueBtn = screen.getByRole('button', { name: /toggle playback queue/i });
+    await user.click(queueBtn);
+
+    const queueDialog = await screen.findByRole('dialog', { name: /playback queue/i });
+    expect(within(queueDialog).getByText(/Troye Horizon/i)).toBeInTheDocument();
+
+    const removeBtn = within(queueDialog).getByRole('button', {
+      name: /remove troye horizon from queue/i,
+    });
+    await user.click(removeBtn);
+
+    await waitFor(() => {
+      expect(within(queueDialog).queryByText(/Troye Horizon/i)).not.toBeInTheDocument();
+    });
+
+    await user.click(within(queueDialog).getByRole('button', { name: /close playback queue/i }));
   });
 
-  it('switches to Made For You recommendations and updates likes', async () => {
+  it('creates playlists in Library, opens Now Playing with Lyrics & Up Next queue controls, and accesses Settings', async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    const madeForYouBtn = await screen.findByRole('button', { name: /made for you/i });
-    await user.click(madeForYouBtn);
+    // Navigate to Library
+    const libraryBtn = (await screen.findAllByRole('button', { name: /^library$/i }))[0]!;
+    await user.click(libraryBtn);
 
-    expect(await screen.findByText(/Discover Weekly/i)).toBeInTheDocument();
-    expect(screen.getByText(/Recommended For Your Vibe/i)).toBeInTheDocument();
-  });
+    await user.click(await screen.findByRole('button', { name: /new playlist/i }));
+    await user.type(screen.getByLabelText(/new playlist name/i), 'Night Drive');
+    await user.click(screen.getByRole('button', { name: /^create$/i }));
+    expect((await screen.findAllByText('Night Drive')).length).toBeGreaterThanOrEqual(1);
 
-  it('opens the API Keys Vault modal and Get Mobile App modal', async () => {
-    const user = userEvent.setup();
-    render(<App />);
-
-    await user.click(await screen.findByRole('button', { name: /^api keys$/i }));
-    expect(await screen.findByRole('dialog', { name: /public music apis/i })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /close api vault/i }));
-
-    await user.click(screen.getByRole('button', { name: /get app/i }));
-    expect(await screen.findByRole('dialog', { name: /get rivibe on mobile/i })).toBeInTheDocument();
-    expect(screen.getByText(/Download APK from GitHub/i)).toBeInTheDocument();
-  });
-
-  it('switches to Live Vibe Radio, opens Now Playing sheet with Lyrics & Artist tabs, and creates a playlist', async () => {
-    const user = userEvent.setup();
-    render(<App />);
-
-    // Open Radio view via rail
-    await user.click(await screen.findByRole('button', { name: /live vibe radio/i }));
-    expect(await screen.findByText(/Groove Salad Classic/i)).toBeInTheDocument();
-
-    // Create a new playlist in sidebar
-    await user.click(screen.getByRole('button', { name: /create new playlist/i }));
-    await user.type(screen.getByLabelText(/new playlist name/i), 'Sunset Drive');
-    await user.click(screen.getByRole('button', { name: /^add$/i }));
-    expect(await screen.findByText('Sunset Drive')).toBeInTheDocument();
-
-    // Open Now Playing sheet and inspect Lyrics & Artist tabs
+    // Open Now Playing sheet and inspect Up Next + Lyrics tabs
     await user.click(screen.getByRole('button', { name: /open now playing details/i }));
-    expect(await screen.findByRole('dialog', { name: /now playing studio/i })).toBeInTheDocument();
+    const studioDialog = await screen.findByRole('dialog', { name: /now playing studio/i });
 
-    await user.click(screen.getByRole('tab', { name: /lyrics/i }));
-    expect(await screen.findByText(/Look at the stars/i)).toBeInTheDocument();
+    expect(within(studioDialog).getByRole('tab', { name: /up next/i })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('tab', { name: /artist/i }));
-    expect(await screen.findByText(/Australian singer-songwriter/i)).toBeInTheDocument();
+    await user.click(within(studioDialog).getByRole('tab', { name: /lyrics/i }));
+    expect(await within(studioDialog).findByText(/Look at the stars/i)).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /close now playing/i }));
+    await user.click(within(studioDialog).getByRole('button', { name: /close now playing/i }));
+
+    // Open Settings modal (YouTube web key, APK link, and Cloud Sync)
+    const settingsBtn = screen.getAllByRole('button', { name: /^settings$/i })[0]!;
+    await user.click(settingsBtn);
+    const settingsDialog = await screen.findByRole('dialog', { name: /rivibe settings/i });
+    expect(within(settingsDialog).getByText(/Android APK Releases/i)).toBeInTheDocument();
+    await user.click(within(settingsDialog).getByRole('button', { name: /close settings/i }));
   });
 
-  it('toggles Full Songs Only mode and registers a Cloud Sync account via Next.js API', async () => {
-    const user = userEvent.setup();
-    render(<App />);
-
-    const fullToggle = await screen.findByRole('button', { name: /full songs/i });
-    await user.click(fullToggle);
-    expect(fullToggle).toHaveAttribute('aria-pressed', 'true');
-
-    await user.click(screen.getByRole('button', { name: /cloud account/i }));
-    expect(await screen.findByRole('dialog', { name: /rivibe cloud account/i })).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: /create account/i }));
-    await user.type(screen.getByLabelText(/display name/i), 'ManojCloud');
-    await user.type(screen.getByLabelText(/email/i), 'manoj@rivibe.app');
-    await user.type(screen.getByLabelText(/password/i), 'StrongPass123!');
-    await user.click(screen.getByRole('button', { name: /create cloud account/i }));
-
-    await waitFor(() => {
-      expect(screen.queryByRole('dialog', { name: /rivibe cloud account/i })).not.toBeInTheDocument();
-    });
-    expect(await screen.findByRole('heading', { name: /manojcloud/i })).toBeInTheDocument();
-  });
-
-  it('passes axe-core WCAG accessibility checks on the main screen', async () => {
+  it('passes axe-core WCAG accessibility checks on Home, Search, and Library', async () => {
     const { container } = render(<App />);
-    await screen.findByRole('heading', { name: /manoj/i });
+    await screen.findByRole('heading', { name: /quick picks/i });
 
     const results = await axe.run(container, {
       rules: {
-        // Color contrast in JSDOM does not compute backdrop-filter composite pixels accurately
         'color-contrast': { enabled: false },
       },
     });

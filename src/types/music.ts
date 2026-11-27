@@ -14,21 +14,9 @@ export type MusicProviderId =
   | 'spotify'
   | 'seed';
 
-export type RailSection =
-  | 'now-playing'
-  | 'browse'
-  | 'songs'
-  | 'radio'
-  | 'albums'
-  | 'search';
+export type AppTab = 'home' | 'search' | 'library';
 
-export type LibrarySection =
-  | 'recently-added'
-  | 'artists'
-  | 'albums'
-  | 'songs'
-  | 'made-for-you'
-  | 'all-playlists';
+export type RepeatMode = 'off' | 'all' | 'one';
 
 export type MoodId =
   | 'all'
@@ -158,9 +146,15 @@ export interface ArtistSpotlight {
   country?: string;
 }
 
+export interface LyricLine {
+  timeSec: number;
+  text: string;
+}
+
 export interface LyricsResult {
   artist: string;
   title: string;
   lyrics: string;
+  syncedLines?: LyricLine[];
   source: 'lyricsovh' | 'lrclib' | 'unavailable';
 }

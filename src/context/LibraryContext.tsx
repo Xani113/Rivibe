@@ -9,31 +9,27 @@ import {
 } from 'react';
 import type {
   ApiVault,
-  BackendCapabilities,
   CloudUser,
-  CuratedMix,
   MoodId,
   Playlist,
-  RadioStation,
-  ScoredTrack,
   TasteProfile,
   Track,
 } from '../types/music';
 import {
   loadApiVault,
   loadPlaylists,
+  loadRecentSearches,
   loadSavedTracks,
   loadTasteProfile,
   resetVaultSecrets,
   saveApiVault,
   savePlaylists,
+  saveRecentSearches,
   saveTasteProfile,
   saveTracksCache,
 } from '../services/storage';
 import {
   fetchDiscoveryTracks,
-  fetchRadioStations,
-  fetchSerendipitousGenre,
   searchAllMusic,
 } from '../services/musicApis';
 import {
@@ -47,10 +43,8 @@ import {
   registerCloudAccount,
   syncCloudLibrary,
 } from '../services/cloudApi';
-import { SEED_RADIO_STATIONS } from '../services/seedCatalog';
 import {
   applyInteractionToTaste,
-  buildCuratedMixes,
   rankRecommendations,
 } from '../engine/vibeEngine';
 import { useDebounce } from '../hooks/useDebounce';
@@ -60,34 +54,33 @@ interface LibraryContextValue {
   apiVault: ApiVault;
   playlists: Playlist[];
   catalog: Track[];
-  curatedMixes: CuratedMix[];
-  recommendations: ScoredTrack[];
+  homeTracks: Track[];
+  likedTracks: Track[];
+  recentTracks: Track[];
+  recentSearches: string[];
   activeMood: MoodId;
   setActiveMood: (mood: MoodId) => void;
-  fullOnly: boolean;
-  setFullOnly: (enabled: boolean) => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   searchResults: Track[];
   isSearching: boolean;
   isLoadingCatalog: boolean;
-  radioStations: RadioStation[];
-  isLoadingRadio: boolean;
   cloudUser: CloudUser | null;
   backendOnline: boolean;
-  backendCapabilities: BackendCapabilities['capabilities'] | null;
-  loadRadio: (tag?: string) => Promise<void>;
   toggleLike: (track: Track) => void;
   recordPlay: (track: Track) => void;
   recordComplete: (track: Track) => void;
   recordSkip: (track: Track) => void;
-  createPlaylist: (name: string, description: string, initialTrack?: Track) => Playlist;
+  createPlaylist: (name: string, description?: string, initialTrack?: Track) => Playlist;
+  deletePlaylist: (playlistId: string) => void;
   addTrackToPlaylist: (playlistId: string, track: Track) => void;
+  removeTrackFromPlaylist: (playlistId: string, trackId: string) => void;
+  addRecentSearch: (query: string) => void;
+  clearRecentSearches: () => void;
   updateDisplayName: (name: string) => void;
   updateApiVault: (vault: ApiVault) => void;
   clearApiVault: () => void;
   registerTracks: (tracks: Track[]) => void;
-  runSurpriseVibe: () => Promise<string>;
   signInCloud: (email: string, password: string) => Promise<string | null>;
   signUpCloud: (email: string, password: string, displayName: string) => Promise<string | null>;
   signOutCloud: () => Promise<void>;
@@ -127,18 +120,14 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   const [playlists, setPlaylists] = useState<Playlist[]>(() => loadPlaylists());
   const [catalog, setCatalog] = useState<Track[]>(() => loadSavedTracks());
   const [activeMood, setActiveMoodState] = useState<MoodId>(() => loadTasteProfile().preferredMood);
-  const [fullOnly, setFullOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const debouncedQuery = useDebounce(searchQuery, 320);
+  const debouncedQuery = useDebounce(searchQuery, 300);
   const [searchResults, setSearchResults] = useState<Track[]>([]);
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => loadRecentSearches());
   const [isSearching, setIsSearching] = useState(false);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
-  const [radioStations, setRadioStations] = useState<RadioStation[]>(SEED_RADIO_STATIONS);
-  const [isLoadingRadio, setIsLoadingRadio] = useState(false);
   const [cloudUser, setCloudUser] = useState<CloudUser | null>(null);
   const [backendOnline, setBackendOnline] = useState(false);
-  const [backendCapabilities, setBackendCapabilities] =
-    useState<BackendCapabilities['capabilities'] | null>(null);
 
   const registerTracks = useCallback((incoming: Track[]) => {
     if (incoming.length === 0) return;
@@ -199,7 +188,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     [registerTracks],
   );
 
-  // Detect Next.js Cloud Backend & restore session
+  // Detect optional Next.js Cloud Sync Backend & restore session
   useEffect(() => {
     let active = true;
     void Promise.all([
@@ -208,7 +197,6 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     ]).then(([health, user]) => {
       if (!active) return;
       setBackendOnline(Boolean(health?.ok));
-      setBackendCapabilities(health?.capabilities ?? null);
       if (user) {
         setCloudUser(user);
         void hydrateFromCloud(apiVault.backendUrl);
@@ -222,7 +210,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
     setIsLoadingCatalog(true);
-    fetchDiscoveryTracks(activeMood, apiVault, fullOnly)
+    fetchDiscoveryTracks(activeMood, apiVault, false)
       .then((tracks) => {
         if (!active) return;
         registerTracks(tracks);
@@ -233,7 +221,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [activeMood, apiVault, fullOnly, registerTracks]);
+  }, [activeMood, apiVault, registerTracks]);
 
   useEffect(() => {
     let active = true;
@@ -244,7 +232,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       return;
     }
     setIsSearching(true);
-    searchAllMusic(trimmed, apiVault, fullOnly)
+    searchAllMusic(trimmed, apiVault, false)
       .then((results) => {
         if (!active) return;
         setSearchResults(results);
@@ -256,21 +244,22 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [debouncedQuery, apiVault, fullOnly, registerTracks]);
+  }, [debouncedQuery, apiVault, registerTracks]);
 
-  const loadRadio = useCallback(async (tag = '') => {
-    setIsLoadingRadio(true);
-    try {
-      const stations = await fetchRadioStations(tag);
-      setRadioStations(stations);
-    } finally {
-      setIsLoadingRadio(false);
-    }
+  const addRecentSearch = useCallback((query: string) => {
+    const clean = query.trim();
+    if (!clean) return;
+    setRecentSearches((prev) => {
+      const next = [clean, ...prev.filter((q) => q.toLowerCase() !== clean.toLowerCase())].slice(0, 8);
+      saveRecentSearches(next);
+      return next;
+    });
   }, []);
 
-  useEffect(() => {
-    void loadRadio();
-  }, [loadRadio]);
+  const clearRecentSearches = useCallback(() => {
+    setRecentSearches([]);
+    saveRecentSearches([]);
+  }, []);
 
   const syncProfileIfSignedIn = useCallback(
     (nextProfile: TasteProfile, nextCatalog: Track[]) => {
@@ -357,12 +346,12 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   );
 
   const createPlaylist = useCallback(
-    (name: string, description: string, initialTrack?: Track): Playlist => {
+    (name: string, description = 'Created in RiVibe', initialTrack?: Track): Playlist => {
       if (initialTrack) registerTracks([initialTrack]);
       const created: Playlist = {
         id: `pl-${Date.now()}`,
-        name: name.trim() || 'Untitled Mix',
-        description: description.trim() || 'Curated in RiVibe',
+        name: name.trim() || 'Untitled Playlist',
+        description: description.trim() || 'Created in RiVibe',
         coverUrl: initialTrack?.artworkUrl || catalog[0]?.artworkUrl || '',
         trackIds: initialTrack ? [initialTrack.id] : [],
         createdAt: Date.now(),
@@ -388,6 +377,16 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     [apiVault.backendUrl, catalog, cloudUser, registerTracks],
   );
 
+  const deletePlaylist = useCallback((playlistId: string) => {
+    setPlaylists((prev) => {
+      const target = prev.find((p) => p.id === playlistId);
+      if (!target || target.isSystem) return prev;
+      const next = prev.filter((p) => p.id !== playlistId);
+      savePlaylists(next);
+      return next;
+    });
+  }, []);
+
   const addTrackToPlaylist = useCallback(
     (playlistId: string, track: Track) => {
       registerTracks([track]);
@@ -411,6 +410,20 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     [apiVault.backendUrl, cloudUser, registerTracks],
   );
 
+  const removeTrackFromPlaylist = useCallback((playlistId: string, trackId: string) => {
+    setPlaylists((prev) => {
+      const next = prev.map((pl) => {
+        if (pl.id !== playlistId) return pl;
+        return {
+          ...pl,
+          trackIds: pl.trackIds.filter((id) => id !== trackId),
+        };
+      });
+      savePlaylists(next);
+      return next;
+    });
+  }, []);
+
   const updateDisplayName = useCallback(
     (name: string) => {
       const clean = name.trim() || 'Manoj';
@@ -432,12 +445,6 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   const clearApiVault = useCallback(() => {
     const cleared = resetVaultSecrets();
     setApiVault(cleared);
-  }, []);
-
-  const runSurpriseVibe = useCallback(async (): Promise<string> => {
-    const genre = await fetchSerendipitousGenre();
-    setSearchQuery(genre);
-    return genre;
   }, []);
 
   const signInCloud = useCallback(
@@ -477,25 +484,32 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     setCloudUser(null);
   }, [apiVault.backendUrl]);
 
-  const activeCatalog = useMemo(() => {
-    if (!fullOnly) return catalog;
-    const filtered = catalog.filter((t) => t.streamType === 'full' || t.streamType === 'youtube');
-    return filtered.length > 0 ? filtered : catalog;
-  }, [catalog, fullOnly]);
+  const homeTracks = useMemo(() => {
+    const playable = catalog.filter((t) => t.source !== 'seed' && t.streamType !== 'none');
+    const pool = playable.length > 0 ? playable : catalog;
+    return rankRecommendations(pool, tasteProfile, {
+      limit: 24,
+      maxPerArtist: 3,
+      moodFilter: activeMood,
+    }).map((scored) => scored.track);
+  }, [catalog, tasteProfile, activeMood]);
 
-  const recommendations = useMemo(
+  const trackById = useMemo(() => new Map(catalog.map((t) => [t.id, t])), [catalog]);
+
+  const likedTracks = useMemo(
     () =>
-      rankRecommendations(activeCatalog, tasteProfile, {
-        limit: 24,
-        maxPerArtist: 2,
-        moodFilter: activeMood,
-      }),
-    [activeCatalog, tasteProfile, activeMood],
+      tasteProfile.likedTrackIds
+        .map((id) => trackById.get(id))
+        .filter((t): t is Track => Boolean(t)),
+    [tasteProfile.likedTrackIds, trackById],
   );
 
-  const curatedMixes = useMemo(
-    () => buildCuratedMixes(activeCatalog, tasteProfile),
-    [activeCatalog, tasteProfile],
+  const recentTracks = useMemo(
+    () =>
+      tasteProfile.recentTrackIds
+        .map((id) => trackById.get(id))
+        .filter((t): t is Track => Boolean(t)),
+    [tasteProfile.recentTrackIds, trackById],
   );
 
   const value = useMemo<LibraryContextValue>(
@@ -503,35 +517,34 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       tasteProfile,
       apiVault,
       playlists,
-      catalog: activeCatalog,
-      curatedMixes,
-      recommendations,
+      catalog,
+      homeTracks,
+      likedTracks,
+      recentTracks,
+      recentSearches,
       activeMood,
       setActiveMood,
-      fullOnly,
-      setFullOnly,
       searchQuery,
       setSearchQuery,
       searchResults,
       isSearching,
       isLoadingCatalog,
-      radioStations,
-      isLoadingRadio,
       cloudUser,
       backendOnline,
-      backendCapabilities,
-      loadRadio,
       toggleLike,
       recordPlay,
       recordComplete,
       recordSkip,
       createPlaylist,
+      deletePlaylist,
       addTrackToPlaylist,
+      removeTrackFromPlaylist,
+      addRecentSearch,
+      clearRecentSearches,
       updateDisplayName,
       updateApiVault,
       clearApiVault,
       registerTracks,
-      runSurpriseVibe,
       signInCloud,
       signUpCloud,
       signOutCloud,
@@ -540,33 +553,33 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       tasteProfile,
       apiVault,
       playlists,
-      activeCatalog,
-      curatedMixes,
-      recommendations,
+      catalog,
+      homeTracks,
+      likedTracks,
+      recentTracks,
+      recentSearches,
       activeMood,
       setActiveMood,
-      fullOnly,
       searchQuery,
       searchResults,
       isSearching,
       isLoadingCatalog,
-      radioStations,
-      isLoadingRadio,
       cloudUser,
       backendOnline,
-      backendCapabilities,
-      loadRadio,
       toggleLike,
       recordPlay,
       recordComplete,
       recordSkip,
       createPlaylist,
+      deletePlaylist,
       addTrackToPlaylist,
+      removeTrackFromPlaylist,
+      addRecentSearch,
+      clearRecentSearches,
       updateDisplayName,
       updateApiVault,
       clearApiVault,
       registerTracks,
-      runSurpriseVibe,
       signInCloud,
       signUpCloud,
       signOutCloud,

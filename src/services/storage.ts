@@ -9,7 +9,14 @@ const KEYS = {
   playlists: 'rivibe_playlists_v1',
   tracks: 'rivibe_saved_tracks_v1',
   authToken: 'rivibe_cloud_token_v1',
+  queue: 'rivibe_queue_v1',
+  recentSearches: 'rivibe_recent_searches_v1',
 } as const;
+
+export interface PersistedQueueState {
+  queue: Track[];
+  queueIndex: number;
+}
 
 function safeReadJson<T>(key: string): T | null {
   try {
@@ -177,6 +184,36 @@ export function loadSavedTracks(): Track[] {
 }
 
 export function saveTracksCache(tracks: Track[]): void {
-  const trimmed = tracks.slice(0, 120);
+  const trimmed = tracks.slice(0, 140);
   safeWriteJson(KEYS.tracks, trimmed);
+}
+
+export function loadSavedQueue(): PersistedQueueState | null {
+  const parsed = safeReadJson<PersistedQueueState>(KEYS.queue);
+  if (!parsed || !Array.isArray(parsed.queue) || parsed.queue.length === 0) {
+    return null;
+  }
+  const safeQueue = parsed.queue.filter((t) => Boolean(t?.id && t?.title));
+  if (safeQueue.length === 0) return null;
+  const idx =
+    typeof parsed.queueIndex === 'number' && parsed.queueIndex >= 0 && parsed.queueIndex < safeQueue.length
+      ? parsed.queueIndex
+      : 0;
+  return { queue: safeQueue, queueIndex: idx };
+}
+
+export function saveQueueState(queue: Track[], queueIndex: number): void {
+  safeWriteJson(KEYS.queue, {
+    queue: queue.slice(0, 100),
+    queueIndex: Math.max(0, Math.min(queueIndex, Math.max(0, queue.length - 1))),
+  });
+}
+
+export function loadRecentSearches(): string[] {
+  const parsed = safeReadJson<string[]>(KEYS.recentSearches);
+  return Array.isArray(parsed) ? parsed.filter((q) => typeof q === 'string' && q.trim().length > 0) : [];
+}
+
+export function saveRecentSearches(queries: string[]): void {
+  safeWriteJson(KEYS.recentSearches, queries.slice(0, 10));
 }

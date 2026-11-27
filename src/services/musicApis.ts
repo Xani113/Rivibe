@@ -1,6 +1,7 @@
 import type {
   ApiVault,
   ArtistSpotlight,
+  LyricLine,
   LyricsResult,
   MoodId,
   RadioStation,
@@ -572,10 +573,12 @@ export async function fetchDiscoveryTracks(
     ? await searchItunes(`${freshLb[0].artist} ${freshLb[0].title}`, 3)
     : [];
 
-  return mergeAndDeduplicateTracks(
-    [nativeTracks, ytTracks, audiusTrending, jamendo, itunes, lbLookup, SEED_TRACKS],
+  const liveTracks = mergeAndDeduplicateTracks(
+    [nativeTracks, ytTracks, audiusTrending, jamendo, itunes, lbLookup],
     fullOnly,
   );
+  if (liveTracks.length > 0) return liveTracks;
+  return mergeAndDeduplicateTracks([SEED_TRACKS], fullOnly);
 }
 
 export async function fetchPersonalizedRecommendations(
@@ -675,6 +678,23 @@ export async function fetchRadioStations(tagOrQuery = ''): Promise<RadioStation[
   return stations.length > 0 ? stations : SEED_RADIO_STATIONS;
 }
 
+function parseLrcSyncedLines(syncedLyrics?: string): LyricLine[] | undefined {
+  if (!syncedLyrics) return undefined;
+  const lines: LyricLine[] = [];
+  const linePattern = /\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]\s*(.*)$/;
+  for (const rawLine of syncedLyrics.split(/\r?\n/)) {
+    const match = linePattern.exec(rawLine.trim());
+    if (!match) continue;
+    const mins = Number(match[1]);
+    const secs = Number(match[2]);
+    const frac = match[3] ? Number(match[3].padEnd(3, '0')) / 1000 : 0;
+    const text = (match[4] ?? '').trim();
+    if (!text) continue;
+    lines.push({ timeSec: mins * 60 + secs + frac, text });
+  }
+  return lines.length > 0 ? lines : undefined;
+}
+
 export async function fetchLyrics(artist: string, title: string): Promise<LyricsResult> {
   const cleanTitle = title.replace(/\s*\([^)]*\)/g, '').trim();
   const url = `https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(cleanTitle)}`;
@@ -695,14 +715,17 @@ export async function fetchLyrics(artist: string, title: string): Promise<Lyrics
     lrcUrl,
     5500,
   );
+  const syncedLines = parseLrcSyncedLines(lrc?.syncedLyrics);
   const resolvedLrc =
     lrc?.plainLyrics?.trim() ||
+    (syncedLines ? syncedLines.map((l) => l.text).join('\n') : '') ||
     lrc?.syncedLyrics?.replace(/\[\d{2}:\d{2}(?:\.\d{2,3})?\]\s*/g, '').trim();
   if (resolvedLrc && resolvedLrc.length > 0) {
     return {
       artist,
       title,
       lyrics: resolvedLrc,
+      syncedLines,
       source: 'lrclib',
     };
   }

@@ -203,6 +203,7 @@ describe('musicApis (public-apis#music adapters)', () => {
       http.get('https://lrclib.net/api/get', () => {
         return HttpResponse.json({
           plainLyrics: 'Waiting in a car\nWaiting for a ride in the dark',
+          syncedLyrics: '[00:12.40] Waiting in a car\n[00:18.00] Waiting for a ride in the dark',
         });
       }),
     );
@@ -212,5 +213,7 @@ describe('musicApis (public-apis#music adapters)', () => {
 
     const lyrics = await fetchLyrics('M83', 'Midnight City');
     expect(lyrics.lyrics).toContain('Waiting in a car');
+    expect(lyrics.syncedLines).toHaveLength(2);
+    expect(lyrics.syncedLines?.[0]?.timeSec).toBeCloseTo(12.4, 1);
   });
 });

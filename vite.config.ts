@@ -29,12 +29,12 @@ export default defineConfig(({ mode }) => {
           'icons/apple-touch-icon.svg',
         ],
         manifest: {
-          name: 'RiVibe — Spatial Music & Recommendations',
+          name: 'RiVibe — Music & Queue Studio',
           short_name: 'RiVibe',
           description:
-            'Warm spatial glass music player, live internet radio, and Spotify-style personalized song recommendations powered by public music APIs.',
-          theme_color: '#18130f',
-          background_color: '#120e0b',
+            'Fast, distraction-free music streaming with smart queue controls, playlists, and synced lyrics.',
+          theme_color: '#090b10',
+          background_color: '#090b10',
           display: 'standalone',
           orientation: 'any',
           start_url: '.',
@@ -62,14 +62,14 @@ export default defineConfig(({ mode }) => {
           ],
           shortcuts: [
             {
-              name: 'Made For You',
-              short_name: 'For You',
-              url: './?view=made-for-you',
+              name: 'Search Music',
+              short_name: 'Search',
+              url: './?tab=search',
             },
             {
-              name: 'Vibe Radio',
-              short_name: 'Radio',
-              url: './?view=radio',
+              name: 'Your Library',
+              short_name: 'Library',
+              url: './?tab=library',
             },
           ],
         },
@@ -77,7 +77,7 @@ export default defineConfig(({ mode }) => {
           globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
           runtimeCaching: [
             {
-              urlPattern: /^https:\/\/(itunes\.apple\.com|is\d-ssl\.mzstatic\.com|api\.listenbrainz\.org|de1\.api\.radio-browser\.info)\/.*/i,
+              urlPattern: /^https:\/\/(itunes\.apple\.com|is\d-ssl\.mzstatic\.com|discoveryprovider\.audius\.co|lrclib\.net)\/.*/i,
               handler: 'StaleWhileRevalidate',
               options: {
                 cacheName: 'rivibe-api-cache',

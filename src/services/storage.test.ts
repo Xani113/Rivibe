@@ -7,8 +7,13 @@ import {
   loadPlaylists,
   savePlaylists,
   resetVaultSecrets,
+  loadSavedQueue,
+  saveQueueState,
+  loadRecentSearches,
+  saveRecentSearches,
   STORAGE_VERSION,
 } from './storage';
+import { SEED_TRACKS } from './seedCatalog';
 
 describe('storage service', () => {
   beforeEach(() => {
@@ -78,5 +83,15 @@ describe('storage service', () => {
     savePlaylists(updated);
 
     expect(loadPlaylists().some((p) => p.id === 'pl-custom')).toBe(true);
+  });
+
+  it('persists playback queue and recent searches', () => {
+    saveQueueState(SEED_TRACKS.slice(0, 3), 1);
+    const loadedQueue = loadSavedQueue();
+    expect(loadedQueue?.queue).toHaveLength(3);
+    expect(loadedQueue?.queueIndex).toBe(1);
+
+    saveRecentSearches(['Troye Sivan', 'Miles Davis']);
+    expect(loadRecentSearches()).toEqual(['Troye Sivan', 'Miles Davis']);
   });
 });
