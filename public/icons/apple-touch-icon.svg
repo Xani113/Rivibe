@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180">
+  <defs>
+    <linearGradient id="bgApple" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3a2f26" />
+      <stop offset="100%" stop-color="#120e0b" />
+    </linearGradient>
+    <linearGradient id="amberApple" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fde8b4" />
+      <stop offset="100%" stop-color="#d4933b" />
+    </linearGradient>
+  </defs>
+  <rect width="180" height="180" fill="url(#bgApple)" />
+  <g fill="url(#amberApple)">
+    <rect x="40" y="69" width="15" height="42" rx="7.5" />
+    <rect x="65" y="45" width="15" height="90" rx="7.5" />
+    <rect x="90" y="32" width="15" height="116" rx="7.5" />
+    <rect x="115" y="54" width="15" height="72" rx="7.5" />
+    <circle cx="140" cy="90" r="8.5" fill="#e87a64" />
+  </g>
+</svg>
