@@ -24,12 +24,14 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm --prefix backend ci
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
         env:
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
+      - run: npm --prefix backend run build
       - uses: actions/upload-artifact@v4
         with:
           name: rivibe-pwa-dist

@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.1.0] - 2026-11-27
+### Added
+- **Next.js Cloud Backend (`backend/`):** Added Next.js App Router backend with `node:sqlite` database, `bcryptjs` + `jose` JWT user accounts, cloud playlist & taste sync (`/api/auth/*`, `/api/library/*`), and server-side music catalog proxy (`/api/music/*`).
+- **Full-Length Song Playback:** Integrated official **YouTube Data API v3** catalog search + **YouTube IFrame Player Bridge** (`YT FULL` playback synced to the floating player) alongside Audius/Jamendo full streams, plus a **Full Songs Only** filter toggle.
+- **Cloud Account UI:** Added `AuthModal` and top-bar cloud sync indicator with seamless offline fallback when running static PWA/APK standalone.
+
 ## [1.0.0] - 2026-11-27
 ### Added
 - **Warm Spatial Glass UI:** Floating left navigation rail, collapsible `Library` sidebar, time-aware personalized greeting, frosted search capsule, mood chips, 4-column cover grid, and floating bottom playback pill with amber progress filament.

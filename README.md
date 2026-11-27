@@ -1,48 +1,41 @@
 # RiVibe
 
-> Warm spatial glass music discovery, live internet radio, and Spotify-style personalized recommendations — installable from Chrome (PWA) and downloadable as an Android APK from GitHub.
+> Warm spatial glass music discovery, live internet radio, and Spotify-style personalized recommendations — powered by a Next.js + SQLite Cloud Backend, YouTube Data API v3 / public music APIs, installable Chrome PWA, and downloadable Android APK.
 
 ## Features
-- **Warm Spatial Glass UI:** Inspired by spatial translucent acoustic glass — left floating navigation rail, collapsible `Library` sidebar, frosted search capsule, luminous album grid, and floating bottom playback pill with warm amber-gold progress filament.
-- **Mobile "Side-Wise" & Portrait Adaptive UX:**
-  - **Mobile Side-Wise Landscape:** Compact left floating glass rail + dense grid + slim floating capsule tailored for landscape grip.
-  - **Mobile Portrait:** Thumb-friendly bottom glass dock + slide-over Library drawer + expandable Now Playing sheet (lyrics, scrubber, up-next & similar recommendations).
-  - **Installable Anywhere:**
-    - **From Chrome:** One-click PWA install (`Add to Home Screen` / Chrome Omnibox Install) with offline caching and Media Session lock-screen controls.
-    - **From GitHub:** Automated Capacitor Android APK build via GitHub Actions (`.github/workflows/ci-and-release.yml`) + GitHub Pages PWA deploy.
-- **Spotify-Style `VibeEngine` Recommendations:**
-  - **Out-of-the-box Keyless Discovery:** Powered by `iTunes Search`, `Audius Discovery`, `TheAudioDB`, `ListenBrainz`, `Radio Browser`, `Lyrics.ovh`, and `Genrenator`.
-  - **Taste Vector & Feedback Loop:** Learns dynamically from Likes, Plays, Completions, Skips, Mood filters, and Seed Artists.
-  - **Explainable Mixes:** `Discover Weekly`, `Daily Mixes`, `Because You Liked...`, `Track Radio`, and `Up Next Infinite Radio` with match scores and artist-diversity caps.
-- **API Keys Vault (`public-apis#music`):** Zero setup required by default, plus built-in Settings API Vault and `.env` support for optional keys from [`public-apis/public-apis#music`](https://github.com/public-apis/public-apis#music):
-  - Last.fm (`track.getSimilar`, `artist.getSimilar`, `tag.getTopTracks`)
-  - TasteDive (similar artist graph)
-  - Jamendo (full-length Creative Commons streams)
-  - TheAudioDB (rich artist bios & moods)
-  - Genius & Spotify client metadata links
+- **Full-Length Song Playback:**
+  - **Audius & Jamendo (`FULL`):** Native HTML5 full-length streaming out of the box.
+  - **YouTube Data API v3 (`YT FULL`):** Add your Google Cloud `YOUTUBE_API_KEY` (in `backend/.env.local` or API Vault) to unlock full-length official songs via the embedded YouTube IFrame Player synced directly into the floating glass player.
+  - **Full Songs Only Toggle:** Filter the home grid and search results to full-length streams with one tap.
+  - **iTunes Search (`30s`):** Instant fallback previews when no full-length source is configured.
+- **Next.js Backend & SQLite Cloud Sync (`backend/`):**
+  - User registration & sign-in (`bcryptjs` + `jose` HS256 JWT via `httpOnly` cookie & Bearer token for Capacitor Android).
+  - Persistent cloud playlists, liked tracks, and taste-vector sync stored in Node's built-in `node:sqlite`.
+  - Server-side music catalog proxy (`/api/music/search`, `/api/music/recommend`, `/api/music/resolve-full`) keeping `YOUTUBE_API_KEY`, `LASTFM_API_KEY`, `TASTEDIVE_API_KEY`, and `JAMENDO_CLIENT_ID` off the client and bypassing browser CORS restrictions (e.g. Deezer).
+- **Warm Spatial Glass UI & Mobile "Side-Wise" UX:**
+  - Floating vertical rail, collapsible `Library` sidebar, frosted search capsule, mood chips, and floating amber playback pill.
+  - Dedicated mobile side-wise landscape rail (`max-height: 560px`) + mobile portrait bottom dock.
+- **Installable from Chrome (PWA) & Downloadable Android APK from GitHub:**
+  - PWA `manifest.webmanifest` + Workbox offline service worker + Media Session lock-screen controls.
+  - Capacitor Android (`android/`) + GitHub Actions CI/CD workflow (`.github/workflows/ci-and-release.yml`) releasing `rivibe-android.apk`.
 
 ## Quick Start
-```bash
-npm install
-npm run dev
-```
+1. Install dependencies:
+   ```bash
+   npm install
+   npm --prefix backend install
+   ```
+2. Optional: copy `backend/.env.example` to `backend/.env.local` and add your `YOUTUBE_API_KEY` (from Google Cloud Console -> YouTube Data API v3) and optional `LASTFM_API_KEY` / `TASTEDIVE_API_KEY` / `JAMENDO_CLIENT_ID`.
+3. Start **both** Vite frontend (`:5173`) and Next.js backend (`:3001`) together:
+   ```bash
+   npm run dev
+   ```
 
 ## Verification Commands
 ```bash
 npm run lint       # ESLint check
-npm run typecheck  # Strict TypeScript check
-npm test           # Vitest unit, integration, and axe accessibility tests
+npm run typecheck  # Strict TypeScript check (frontend + Next.js backend)
+npm test           # Vitest frontend (RTL + MSW + axe-core) & backend (SQLite + Auth + YouTube proxy)
 npm run build      # Production Vite + PWA bundle
-```
-
-## Mobile Distribution
-### 1. Install from Chrome (PWA)
-Open the deployed GitHub Pages URL (or `http://localhost:5173` / `http://<LAN-IP>:5173` on mobile Chrome) and tap **Install RiVibe** in the top bar or Chrome's **Install App / Add to Home Screen** menu.
-
-### 2. Download Android APK from GitHub
-Push to `main` or tag a release (`git tag v1.0.0 && git push origin v1.0.0`) on GitHub. The **Build Android APK (Capacitor)** workflow compiles `rivibe-android.apk` and attaches it to the workflow artifacts / GitHub Release so Android users can download and sideload directly.
-
-To sync locally:
-```bash
-npm run cap:sync
+npm run build:all  # Production PWA + Next.js backend build
 ```
