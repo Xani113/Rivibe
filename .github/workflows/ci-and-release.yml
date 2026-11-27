@@ -91,7 +91,7 @@ jobs:
 
   publish-release:
     name: Publish GitHub Release APK
-    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
+    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && github.event_name == 'push')
     needs: [verify-web, build-android-apk]
     runs-on: ubuntu-latest
     steps:
@@ -101,8 +101,12 @@ jobs:
           path: release-apk/
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}
+          name: ${{ github.ref_type == 'tag' && format('RiVibe {0}', github.ref_name) || 'RiVibe Latest Android APK' }}
+          body: ${{ github.ref_type != 'tag' && format('Automated Android APK build from `{0}` (`{1}`). Download `rivibe-android.apk` below to install on Android.', github.ref_name, github.sha) || '' }}
+          generate_release_notes: ${{ github.ref_type == 'tag' }}
+          make_latest: 'true'
           files: release-apk/rivibe-android.apk
-          generate_release_notes: true
 
   deploy-pages:
     name: Deploy Chrome-Installable PWA to GitHub Pages
