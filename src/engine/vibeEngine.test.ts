@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   applyInteractionToTaste,
-  buildCuratedMixes,
   buildTrackRadioQueue,
   rankRecommendations,
   scoreTrack,
@@ -119,7 +118,7 @@ describe('VibeEngine recommendation core', () => {
     expect(ranked.length).toBe(4);
   });
 
-  it('builds personalized Spotify-style curated mixes and Track Radio queue', () => {
+  it('builds Track Radio queue seeded by the selected track', () => {
     const profile = makeProfile();
     const catalog = [
       makeTrack({ id: '1', artist: 'Troye Sivan', genres: ['Synth-Pop'], moods: ['chill'] }),
@@ -128,10 +127,6 @@ describe('VibeEngine recommendation core', () => {
       makeTrack({ id: '4', artist: 'Soo Jin', genres: ['Lo-Fi', 'Ambient'], moods: ['chill', 'focus'] }),
       makeTrack({ id: '5', artist: 'Chvrches', genres: ['Synth-Pop'], moods: ['workout'] }),
     ];
-
-    const mixes = buildCuratedMixes(catalog, profile);
-    expect(mixes.length).toBeGreaterThanOrEqual(3);
-    expect(mixes[0]?.title).toContain('Discover');
 
     const radio = buildTrackRadioQueue(catalog[0]!, catalog, profile, 4);
     expect(radio[0]?.id).toBe('1');

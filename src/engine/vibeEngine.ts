@@ -1,4 +1,4 @@
-import type { CuratedMix, MoodId, ScoredTrack, TasteProfile, Track } from '../types/music';
+import type { MoodId, ScoredTrack, TasteProfile, Track } from '../types/music';
 import { normalizeText } from '../utils/formatTime';
 
 export type TasteInteraction = 'like' | 'unlike' | 'skip' | 'play' | 'complete';
@@ -92,29 +92,20 @@ export function scoreTrack(
   let score = 1.0;
   const reasons: string[] = [];
 
-  // 1. Genre affinity
-  let bestGenreWeight = 0;
-  let bestGenreName = '';
   for (const g of track.genres) {
     const w = profile.genreWeights[normalizeText(g)] ?? 0;
     score += w * 0.85;
-    if (w > bestGenreWeight) {
-      bestGenreWeight = w;
-      bestGenreName = g;
+    if (w >= 1.2 && reasons.length === 0) {
+      reasons.push(`Matches your ${g} taste`);
     }
   }
-  if (bestGenreName && bestGenreWeight >= 1.2) {
-    reasons.push(`Matches your ${bestGenreName} taste`);
-  }
 
-  // 2. Artist affinity
   const artistWeight = profile.artistWeights[normalizeText(track.artist)] ?? 0;
   score += artistWeight * 1.1;
   if (artistWeight >= 1.2) {
     reasons.push(`From ${track.artist}`);
   }
 
-  // 3. Mood alignment
   if (moodFilter !== 'all' && moodFilter !== 'for-you') {
     if (track.moods.some((m) => normalizeText(m) === moodFilter)) {
       score += 2.2;
@@ -126,7 +117,6 @@ export function scoreTrack(
     }
   }
 
-  // 4. Seed similarity (for Track Radio / Up Next similar songs)
   if (seedTrack) {
     const seedGenres = new Set(seedTrack.genres.map(normalizeText));
     const sharedGenres = track.genres.filter((g) => seedGenres.has(normalizeText(g)));
@@ -136,7 +126,9 @@ export function scoreTrack(
     }
 
     const seedMoods = new Set(seedTrack.moods.map(normalizeText));
-    const sharedMoods = track.moods.filter((m) => m !== 'for-you' && seedMoods.has(normalizeText(m)));
+    const sharedMoods = track.moods.filter(
+      (m) => m !== 'for-you' && seedMoods.has(normalizeText(m)),
+    );
     if (sharedMoods.length > 0) {
       score += Math.min(2.2, sharedMoods.length * 1.1);
     }
@@ -161,7 +153,6 @@ export function scoreTrack(
     }
   }
 
-  // 5. Audio playability & popularity balance
   if (track.streamType === 'full' || track.streamType === 'youtube') score += 1.4;
   else if (track.streamType === 'preview') score += 0.9;
 
@@ -169,14 +160,8 @@ export function scoreTrack(
     score += Math.min(1.2, track.popularity / 100);
   }
 
-  // Novelty boost for unplayed tracks
   if ((profile.playCounts[track.id] ?? 0) === 0 && !profile.likedTrackIds.includes(track.id)) {
     score += 0.45;
-    if (reasons.length === 0) reasons.push('Fresh Discovery');
-  }
-
-  if (reasons.length === 0) {
-    reasons.push(track.genres[0] ? `${track.genres[0]} Curated Pick` : 'Curated Discovery');
   }
 
   const normalizedPercent = Math.round(Math.max(52, Math.min(99, 54 + score * 4.8)));
@@ -225,7 +210,6 @@ export function rankRecommendations(
     .map((track) => scoreTrack(track, profile, moodFilter, seedTrack))
     .sort((a, b) => b.score - a.score);
 
-  // Enforce Spotify-style artist diversity cap
   const artistCounts = new Map<string, number>();
   const diversified: ScoredTrack[] = [];
 
@@ -239,95 +223,6 @@ export function rankRecommendations(
   }
 
   return diversified;
-}
-
-export function buildCuratedMixes(catalog: Track[], profile: TasteProfile): CuratedMix[] {
-  if (catalog.length === 0) return [];
-
-  const discoverTracks = rankRecommendations(catalog, profile, {
-    limit: 12,
-    maxPerArtist: 2,
-    moodFilter: 'for-you',
-  });
-
-  const topGenres = Object.entries(profile.genreWeights)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 2)
-    .map(([g]) => g);
-
-  const likedSeed =
-    catalog.find((t) => profile.likedTrackIds.includes(t.id)) ?? catalog[0];
-
-  const mixes: CuratedMix[] = [
-    {
-      id: 'mix-discover-weekly',
-      title: 'Discover Weekly',
-      subtitle: 'Fresh tracks matched to your listening vector',
-      badge: 'For You',
-      accentColor: '#f0c46c',
-      coverUrl: discoverTracks[0]?.track.artworkUrl ?? catalog[0]?.artworkUrl ?? '',
-      tracks: discoverTracks,
-      seedLabel: 'Personalized Blend',
-    },
-  ];
-
-  if (likedSeed) {
-    const similarToLiked = rankRecommendations(catalog, profile, {
-      limit: 10,
-      maxPerArtist: 2,
-      seedTrack: likedSeed,
-      excludeIds: new Set([likedSeed.id]),
-    });
-    mixes.push({
-      id: 'mix-because-liked',
-      title: `Because You Liked ${likedSeed.artist}`,
-      subtitle: `Inspired by ${likedSeed.title} & adjacent vibes`,
-      badge: 'Taste Match',
-      accentColor: '#e87a64',
-      coverUrl: likedSeed.artworkUrl,
-      tracks: similarToLiked.length > 0 ? similarToLiked : discoverTracks.slice(0, 6),
-      seedLabel: likedSeed.title,
-    });
-  }
-
-  topGenres.forEach((genreKey, index) => {
-    const genreMatches = catalog.filter((t) =>
-      t.genres.some((g) => normalizeText(g).includes(genreKey)),
-    );
-    const ranked = rankRecommendations(genreMatches.length > 0 ? genreMatches : catalog, profile, {
-      limit: 10,
-      maxPerArtist: 2,
-    });
-    const label = genreKey.replace(/\b\w/g, (c) => c.toUpperCase());
-    mixes.push({
-      id: `mix-daily-${index + 1}`,
-      title: `Daily Mix 0${index + 1}`,
-      subtitle: `${label}, ambient electronics & curated deep cuts`,
-      badge: label,
-      accentColor: index === 0 ? '#7cc49f' : '#9ec5ff',
-      coverUrl: ranked[0]?.track.artworkUrl ?? catalog[index % catalog.length]?.artworkUrl ?? '',
-      tracks: ranked,
-      seedLabel: label,
-    });
-  });
-
-  const lateNightRanked = rankRecommendations(catalog, profile, {
-    limit: 10,
-    maxPerArtist: 2,
-    moodFilter: 'late-night',
-  });
-  mixes.push({
-    id: 'mix-late-night',
-    title: 'Late Night Glass',
-    subtitle: 'Warm nocturnal synth, lo-fi & mellow acoustic flow',
-    badge: 'Mood',
-    accentColor: '#f0c46c',
-    coverUrl: lateNightRanked[0]?.track.artworkUrl ?? catalog[0]?.artworkUrl ?? '',
-    tracks: lateNightRanked,
-    seedLabel: 'Late Night',
-  });
-
-  return mixes;
 }
 
 export function buildTrackRadioQueue(

@@ -23,9 +23,9 @@ describe('storage service', () => {
   it('returns a valid default TasteProfile when storage is empty', () => {
     const profile = loadTasteProfile();
     expect(profile.version).toBe(STORAGE_VERSION);
-    expect(profile.displayName).toBe('Manoj');
-    expect(profile.likedTrackIds.length).toBeGreaterThan(0);
-    expect(Object.keys(profile.genreWeights).length).toBeGreaterThan(0);
+    expect(profile.displayName).toBe('Listener');
+    expect(profile.likedTrackIds).toEqual([]);
+    expect(Object.keys(profile.genreWeights)).toEqual([]);
   });
 
   it('persists and reloads TasteProfile changes', () => {
@@ -43,31 +43,31 @@ describe('storage service', () => {
     localStorage.setItem('rivibe_taste_profile_v1', '{not valid json');
     const profile = loadTasteProfile();
     expect(profile.version).toBe(STORAGE_VERSION);
-    expect(profile.displayName).toBe('Manoj');
+    expect(profile.displayName).toBe('Listener');
   });
 
   it('saves and loads API Vault keys and clears them on reset', () => {
     const vault = loadApiVault();
-    expect(vault.theAudioDbApiKey).toBe('123');
+    expect(vault.githubRepoUrl).toBeTruthy();
 
     saveApiVault({
       ...vault,
-      lastfmApiKey: 'test-lastfm-key',
-      tastediveApiKey: 'test-td-key',
+      youtubeApiKey: 'test-yt-key',
+      backendUrl: 'https://api.example.com',
     });
 
     const loaded = loadApiVault();
-    expect(loaded.lastfmApiKey).toBe('test-lastfm-key');
-    expect(loaded.tastediveApiKey).toBe('test-td-key');
+    expect(loaded.youtubeApiKey).toBe('test-yt-key');
+    expect(loaded.backendUrl).toBe('https://api.example.com');
 
     const cleared = resetVaultSecrets();
-    expect(cleared.lastfmApiKey).toBe('');
-    expect(cleared.tastediveApiKey).toBe('');
+    expect(cleared.youtubeApiKey).toBe('');
+    expect(cleared.backendUrl).toBe('');
   });
 
   it('loads default playlists and persists newly created playlists', () => {
     const initial = loadPlaylists();
-    expect(initial.some((p) => p.name === 'Liked Vibes')).toBe(true);
+    expect(initial.some((p) => p.name === 'Liked Songs')).toBe(true);
 
     const updated = [
       ...initial,

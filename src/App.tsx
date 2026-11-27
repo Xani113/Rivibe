@@ -36,8 +36,6 @@ function RiVibeStudio() {
     searchResults,
     isSearching,
     isLoadingCatalog,
-    cloudUser,
-    backendOnline,
     toggleLike,
     createPlaylist,
     deletePlaylist,
@@ -47,9 +45,6 @@ function RiVibeStudio() {
     clearRecentSearches,
     updateApiVault,
     clearApiVault,
-    signInCloud,
-    signUpCloud,
-    signOutCloud,
   } = useLibrary();
 
   const {
@@ -211,13 +206,8 @@ function RiVibeStudio() {
       <SettingsModal
         isOpen={settingsOpen}
         vault={apiVault}
-        cloudUser={cloudUser}
-        backendOnline={backendOnline}
         onSaveVault={updateApiVault}
         onResetVault={clearApiVault}
-        onSignIn={signInCloud}
-        onSignUp={signUpCloud}
-        onSignOut={signOutCloud}
         onClose={() => setSettingsOpen(false)}
       />
 

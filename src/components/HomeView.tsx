@@ -51,8 +51,8 @@ export function HomeView({
   onAddToPlaylist,
 }: HomeViewProps) {
   const quickPicks = tracks.slice(0, 8);
-  const featured = tracks.slice(0, 12);
-  const recentStrip = recentTracks.slice(0, 6);
+  const moreTracks = tracks.slice(8, 20);
+  const recentStrip = recentTracks.slice(0, 8);
 
   return (
     <div className="space-y-7">
@@ -82,7 +82,7 @@ export function HomeView({
         })}
       </div>
 
-      {/* Quick Picks (Velune-style fast song launch + instant Queue button) */}
+      {/* Quick Picks */}
       <section aria-labelledby="quick-picks-heading" className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
@@ -134,14 +134,12 @@ export function HomeView({
         )}
       </section>
 
-      {/* Keep Listening Strip (when history has items) */}
+      {/* Keep Listening (only shown for tracks the user actually played) */}
       {recentStrip.length > 0 ? (
         <section aria-labelledby="recent-heading" className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 id="recent-heading" className="text-base font-bold text-[#f4f5f7] tracking-tight">
-              Keep Listening
-            </h2>
-          </div>
+          <h2 id="recent-heading" className="text-base font-bold text-[#f4f5f7] tracking-tight">
+            Keep Listening
+          </h2>
           <div className="flex gap-3 overflow-x-auto pb-2 rv-scroll">
             {recentStrip.map((track) => {
               const active = currentTrackId === track.id;
@@ -199,96 +197,85 @@ export function HomeView({
         </section>
       ) : null}
 
-      {/* Discover Grid */}
-      <section aria-labelledby="discover-heading" className="space-y-3">
-        <div>
-          <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[rgba(244,245,247,0.45)]">
-            Catalog
-          </span>
+      {/* More to Explore (only additional distinct tracks beyond Quick Picks) */}
+      {moreTracks.length > 0 ? (
+        <section aria-labelledby="discover-heading" className="space-y-3">
           <h2 id="discover-heading" className="text-base font-bold text-[#f4f5f7] tracking-tight">
-            Ready to Stream
+            More to Explore
           </h2>
-        </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-          {featured.map((track) => {
-            const active = currentTrackId === track.id;
-            return (
-              <article
-                key={`card-${track.id}`}
-                className={`group rounded-xl p-2 bg-[#10131b] border transition-colors ${
-                  active
-                    ? 'border-[rgba(34,211,166,0.45)] bg-[rgba(34,211,166,0.06)]'
-                    : 'border-[rgba(255,255,255,0.07)] hover:border-[rgba(255,255,255,0.16)]'
-                }`}
-              >
-                <div className="relative aspect-square rounded-lg overflow-hidden bg-[#181d29]">
-                  <img
-                    src={track.artworkUrl || FALLBACK_ART}
-                    alt={`${track.album} art`}
-                    loading="lazy"
-                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-                  />
-
-                  <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-[rgba(9,11,16,0.8)] text-[9px] font-bold uppercase tracking-wider text-[rgba(244,245,247,0.85)]">
-                    {track.streamType === 'youtube'
-                      ? 'YT'
-                      : track.streamType === 'full'
-                        ? 'FULL'
-                        : '30S'}
-                  </span>
-
-                  <div className="absolute inset-x-1.5 bottom-1.5 flex items-center justify-between gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
-                    <button
-                      type="button"
-                      aria-label={`Add ${track.title} to queue`}
-                      title="Add to queue"
-                      onClick={() => onAddToQueue(track)}
-                      className="rv-interactive-btn w-8 h-8 rounded-lg bg-[rgba(9,11,16,0.86)] border border-[rgba(255,255,255,0.15)] text-[#f4f5f7] hover:text-[#22d3a6] flex items-center justify-center"
-                    >
-                      <ListPlus className="w-3.5 h-3.5" aria-hidden="true" />
-                    </button>
-
-                    <button
-                      type="button"
-                      aria-label={`Play ${track.title}`}
-                      onClick={() => onPlayTrack(track, tracks)}
-                      className="rv-interactive-btn w-8 h-8 rounded-lg bg-[#22d3a6] text-[#042019] flex items-center justify-center shadow-lg"
-                    >
-                      {active && isPlaying ? (
-                        <span className="inline-flex items-end gap-0.5 h-3" aria-hidden="true">
-                          <span className="w-0.5 h-full bg-[#042019] rounded-full rv-eq-bar" />
-                          <span className="w-0.5 h-full bg-[#042019] rounded-full rv-eq-bar" />
-                          <span className="w-0.5 h-full bg-[#042019] rounded-full rv-eq-bar" />
-                        </span>
-                      ) : (
-                        <Play className="w-3.5 h-3.5 fill-current ml-0.5" aria-hidden="true" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => onPlayTrack(track, tracks)}
-                  className="mt-2 w-full min-w-0 text-left"
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+            {moreTracks.map((track) => {
+              const active = currentTrackId === track.id;
+              return (
+                <article
+                  key={`card-${track.id}`}
+                  className={`group rounded-xl p-2 bg-[#10131b] border transition-colors ${
+                    active
+                      ? 'border-[rgba(34,211,166,0.45)] bg-[rgba(34,211,166,0.06)]'
+                      : 'border-[rgba(255,255,255,0.07)] hover:border-[rgba(255,255,255,0.16)]'
+                  }`}
                 >
-                  <div
-                    className={`text-[13px] font-semibold truncate ${
-                      active ? 'text-[#22d3a6]' : 'text-[#f4f5f7]'
-                    }`}
+                  <div className="relative aspect-square rounded-lg overflow-hidden bg-[#181d29]">
+                    <img
+                      src={track.artworkUrl || FALLBACK_ART}
+                      alt={`${track.album} art`}
+                      loading="lazy"
+                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                    />
+
+                    <div className="absolute inset-x-1.5 bottom-1.5 flex items-center justify-between gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
+                      <button
+                        type="button"
+                        aria-label={`Add ${track.title} to queue`}
+                        title="Add to queue"
+                        onClick={() => onAddToQueue(track)}
+                        className="rv-interactive-btn w-8 h-8 rounded-lg bg-[rgba(9,11,16,0.86)] border border-[rgba(255,255,255,0.15)] text-[#f4f5f7] hover:text-[#22d3a6] flex items-center justify-center"
+                      >
+                        <ListPlus className="w-3.5 h-3.5" aria-hidden="true" />
+                      </button>
+
+                      <button
+                        type="button"
+                        aria-label={`Play ${track.title}`}
+                        onClick={() => onPlayTrack(track, tracks)}
+                        className="rv-interactive-btn w-8 h-8 rounded-lg bg-[#22d3a6] text-[#042019] flex items-center justify-center shadow-lg"
+                      >
+                        {active && isPlaying ? (
+                          <span className="inline-flex items-end gap-0.5 h-3" aria-hidden="true">
+                            <span className="w-0.5 h-full bg-[#042019] rounded-full rv-eq-bar" />
+                            <span className="w-0.5 h-full bg-[#042019] rounded-full rv-eq-bar" />
+                            <span className="w-0.5 h-full bg-[#042019] rounded-full rv-eq-bar" />
+                          </span>
+                        ) : (
+                          <Play className="w-3.5 h-3.5 fill-current ml-0.5" aria-hidden="true" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => onPlayTrack(track, tracks)}
+                    className="mt-2 w-full min-w-0 text-left"
                   >
-                    {track.title}
-                  </div>
-                  <div className="text-[11px] text-[rgba(244,245,247,0.56)] truncate">
-                    {track.artist}
-                  </div>
-                </button>
-              </article>
-            );
-          })}
-        </div>
-      </section>
+                    <div
+                      className={`text-[13px] font-semibold truncate ${
+                        active ? 'text-[#22d3a6]' : 'text-[#f4f5f7]'
+                      }`}
+                    >
+                      {track.title}
+                    </div>
+                    <div className="text-[11px] text-[rgba(244,245,247,0.56)] truncate">
+                      {track.artist}
+                    </div>
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

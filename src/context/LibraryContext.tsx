@@ -7,14 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type {
-  ApiVault,
-  CloudUser,
-  MoodId,
-  Playlist,
-  TasteProfile,
-  Track,
-} from '../types/music';
+import type { ApiVault, MoodId, Playlist, TasteProfile, Track } from '../types/music';
 import {
   loadApiVault,
   loadPlaylists,
@@ -28,25 +21,8 @@ import {
   saveTasteProfile,
   saveTracksCache,
 } from '../services/storage';
-import {
-  fetchDiscoveryTracks,
-  searchAllMusic,
-} from '../services/musicApis';
-import {
-  addTrackToCloudPlaylist,
-  checkBackendHealth,
-  createCloudPlaylist,
-  fetchCloudLibrary,
-  fetchCurrentCloudUser,
-  loginCloudAccount,
-  logoutCloudAccount,
-  registerCloudAccount,
-  syncCloudLibrary,
-} from '../services/cloudApi';
-import {
-  applyInteractionToTaste,
-  rankRecommendations,
-} from '../engine/vibeEngine';
+import { fetchDiscoveryTracks, searchAllMusic } from '../services/musicApis';
+import { applyInteractionToTaste, rankRecommendations } from '../engine/vibeEngine';
 import { useDebounce } from '../hooks/useDebounce';
 
 interface LibraryContextValue {
@@ -65,8 +41,6 @@ interface LibraryContextValue {
   searchResults: Track[];
   isSearching: boolean;
   isLoadingCatalog: boolean;
-  cloudUser: CloudUser | null;
-  backendOnline: boolean;
   toggleLike: (track: Track) => void;
   recordPlay: (track: Track) => void;
   recordComplete: (track: Track) => void;
@@ -77,13 +51,9 @@ interface LibraryContextValue {
   removeTrackFromPlaylist: (playlistId: string, trackId: string) => void;
   addRecentSearch: (query: string) => void;
   clearRecentSearches: () => void;
-  updateDisplayName: (name: string) => void;
   updateApiVault: (vault: ApiVault) => void;
   clearApiVault: () => void;
   registerTracks: (tracks: Track[]) => void;
-  signInCloud: (email: string, password: string) => Promise<string | null>;
-  signUpCloud: (email: string, password: string, displayName: string) => Promise<string | null>;
-  signOutCloud: () => Promise<void>;
 }
 
 const LibraryContext = createContext<LibraryContextValue | undefined>(undefined);
@@ -121,13 +91,11 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   const [catalog, setCatalog] = useState<Track[]>(() => loadSavedTracks());
   const [activeMood, setActiveMoodState] = useState<MoodId>(() => loadTasteProfile().preferredMood);
   const [searchQuery, setSearchQuery] = useState('');
-  const debouncedQuery = useDebounce(searchQuery, 300);
+  const debouncedQuery = useDebounce(searchQuery, 280);
   const [searchResults, setSearchResults] = useState<Track[]>([]);
   const [recentSearches, setRecentSearches] = useState<string[]>(() => loadRecentSearches());
   const [isSearching, setIsSearching] = useState(false);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
-  const [cloudUser, setCloudUser] = useState<CloudUser | null>(null);
-  const [backendOnline, setBackendOnline] = useState(false);
 
   const registerTracks = useCallback((incoming: Track[]) => {
     if (incoming.length === 0) return;
@@ -137,75 +105,6 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       return merged;
     });
   }, []);
-
-  const hydrateFromCloud = useCallback(
-    async (baseUrl: string) => {
-      const cloud = await fetchCloudLibrary(baseUrl);
-      if (!cloud) return;
-
-      if (cloud.snapshot) {
-        const snap = cloud.snapshot;
-        registerTracks(snap.likedTracks);
-        setTasteProfile((prev) => {
-          const next: TasteProfile = {
-            ...prev,
-            displayName: snap.displayName || prev.displayName,
-            genreWeights: snap.genreWeights ?? prev.genreWeights,
-            artistWeights: snap.artistWeights ?? prev.artistWeights,
-            moodWeights: snap.moodWeights ?? prev.moodWeights,
-            likedTrackIds: snap.likedTracks.map((t) => t.id),
-            dislikedTrackIds: snap.dislikedTrackIds ?? prev.dislikedTrackIds,
-            recentTrackIds: snap.recentTrackIds ?? prev.recentTrackIds,
-            seedArtists: snap.seedArtists ?? prev.seedArtists,
-          };
-          saveTasteProfile(next);
-          return next;
-        });
-      }
-
-      if (cloud.playlists.length > 0) {
-        const allCloudTracks = cloud.playlists.flatMap((p) => p.tracks);
-        registerTracks(allCloudTracks);
-        setPlaylists((prev) => {
-          const byId = new Map(prev.map((p) => [p.id, p]));
-          for (const cp of cloud.playlists) {
-            byId.set(cp.id, {
-              id: cp.id,
-              name: cp.name,
-              description: cp.description,
-              coverUrl: cp.coverUrl || cp.tracks[0]?.artworkUrl || prev[0]?.coverUrl || '',
-              trackIds: cp.tracks.map((t) => t.id),
-              createdAt: cp.createdAt,
-              isSystem: cp.isSystem,
-            });
-          }
-          const next = Array.from(byId.values());
-          savePlaylists(next);
-          return next;
-        });
-      }
-    },
-    [registerTracks],
-  );
-
-  // Detect optional Next.js Cloud Sync Backend & restore session
-  useEffect(() => {
-    let active = true;
-    void Promise.all([
-      checkBackendHealth(apiVault.backendUrl),
-      fetchCurrentCloudUser(apiVault.backendUrl),
-    ]).then(([health, user]) => {
-      if (!active) return;
-      setBackendOnline(Boolean(health?.ok));
-      if (user) {
-        setCloudUser(user);
-        void hydrateFromCloud(apiVault.backendUrl);
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, [apiVault.backendUrl, hydrateFromCloud]);
 
   useEffect(() => {
     let active = true;
@@ -250,7 +149,10 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     const clean = query.trim();
     if (!clean) return;
     setRecentSearches((prev) => {
-      const next = [clean, ...prev.filter((q) => q.toLowerCase() !== clean.toLowerCase())].slice(0, 8);
+      const next = [clean, ...prev.filter((q) => q.toLowerCase() !== clean.toLowerCase())].slice(
+        0,
+        8,
+      );
       saveRecentSearches(next);
       return next;
     });
@@ -261,27 +163,14 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     saveRecentSearches([]);
   }, []);
 
-  const syncProfileIfSignedIn = useCallback(
-    (nextProfile: TasteProfile, nextCatalog: Track[]) => {
-      if (cloudUser) {
-        void syncCloudLibrary(apiVault.backendUrl, nextProfile, nextCatalog);
-      }
-    },
-    [apiVault.backendUrl, cloudUser],
-  );
-
-  const setActiveMood = useCallback(
-    (mood: MoodId) => {
-      setActiveMoodState(mood);
-      setTasteProfile((prev) => {
-        const next = { ...prev, preferredMood: mood };
-        saveTasteProfile(next);
-        syncProfileIfSignedIn(next, catalog);
-        return next;
-      });
-    },
-    [catalog, syncProfileIfSignedIn],
-  );
+  const setActiveMood = useCallback((mood: MoodId) => {
+    setActiveMoodState(mood);
+    setTasteProfile((prev) => {
+      const next = { ...prev, preferredMood: mood };
+      saveTasteProfile(next);
+      return next;
+    });
+  }, []);
 
   const toggleLike = useCallback(
     (track: Track) => {
@@ -290,7 +179,6 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
         const alreadyLiked = prev.likedTrackIds.includes(track.id);
         const next = applyInteractionToTaste(prev, track, alreadyLiked ? 'unlike' : 'like');
         saveTasteProfile(next);
-        syncProfileIfSignedIn(next, [track, ...catalog]);
         return next;
       });
       setPlaylists((prev) => {
@@ -310,7 +198,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
         return next;
       });
     },
-    [catalog, registerTracks, syncProfileIfSignedIn],
+    [registerTracks],
   );
 
   const recordPlay = useCallback(
@@ -333,17 +221,13 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const recordSkip = useCallback(
-    (track: Track) => {
-      setTasteProfile((prev) => {
-        const next = applyInteractionToTaste(prev, track, 'skip');
-        saveTasteProfile(next);
-        syncProfileIfSignedIn(next, catalog);
-        return next;
-      });
-    },
-    [catalog, syncProfileIfSignedIn],
-  );
+  const recordSkip = useCallback((track: Track) => {
+    setTasteProfile((prev) => {
+      const next = applyInteractionToTaste(prev, track, 'skip');
+      saveTasteProfile(next);
+      return next;
+    });
+  }, []);
 
   const createPlaylist = useCallback(
     (name: string, description = 'Created in RiVibe', initialTrack?: Track): Playlist => {
@@ -361,20 +245,9 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
         savePlaylists(next);
         return next;
       });
-
-      if (cloudUser) {
-        void createCloudPlaylist(apiVault.backendUrl, created, initialTrack).then((remote) => {
-          if (!remote) return;
-          setPlaylists((prev) => {
-            const next = prev.map((p) => (p.id === created.id ? { ...p, id: remote.id } : p));
-            savePlaylists(next);
-            return next;
-          });
-        });
-      }
       return created;
     },
-    [apiVault.backendUrl, catalog, cloudUser, registerTracks],
+    [catalog, registerTracks],
   );
 
   const deletePlaylist = useCallback((playlistId: string) => {
@@ -403,11 +276,8 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
         savePlaylists(next);
         return next;
       });
-      if (cloudUser) {
-        void addTrackToCloudPlaylist(apiVault.backendUrl, playlistId, track);
-      }
     },
-    [apiVault.backendUrl, cloudUser, registerTracks],
+    [registerTracks],
   );
 
   const removeTrackFromPlaylist = useCallback((playlistId: string, trackId: string) => {
@@ -424,19 +294,6 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const updateDisplayName = useCallback(
-    (name: string) => {
-      const clean = name.trim() || 'Manoj';
-      setTasteProfile((prev) => {
-        const next = { ...prev, displayName: clean };
-        saveTasteProfile(next);
-        syncProfileIfSignedIn(next, catalog);
-        return next;
-      });
-    },
-    [catalog, syncProfileIfSignedIn],
-  );
-
   const updateApiVault = useCallback((nextVault: ApiVault) => {
     saveApiVault(nextVault);
     setApiVault(nextVault);
@@ -446,43 +303,6 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     const cleared = resetVaultSecrets();
     setApiVault(cleared);
   }, []);
-
-  const signInCloud = useCallback(
-    async (email: string, password: string): Promise<string | null> => {
-      const res = await loginCloudAccount(apiVault.backendUrl, { email, password });
-      if (res.error || !res.user) return res.error ?? 'Sign in failed';
-      setCloudUser(res.user);
-      setBackendOnline(true);
-      await hydrateFromCloud(apiVault.backendUrl);
-      return null;
-    },
-    [apiVault.backendUrl, hydrateFromCloud],
-  );
-
-  const signUpCloud = useCallback(
-    async (email: string, password: string, displayName: string): Promise<string | null> => {
-      const res = await registerCloudAccount(apiVault.backendUrl, {
-        email,
-        password,
-        displayName,
-      });
-      if (res.error || !res.user) return res.error ?? 'Registration failed';
-      setCloudUser(res.user);
-      setBackendOnline(true);
-      const nextProfile = { ...tasteProfile, displayName: res.user.displayName };
-      setTasteProfile(nextProfile);
-      saveTasteProfile(nextProfile);
-      await syncCloudLibrary(apiVault.backendUrl, nextProfile, catalog);
-      await hydrateFromCloud(apiVault.backendUrl);
-      return null;
-    },
-    [apiVault.backendUrl, catalog, hydrateFromCloud, tasteProfile],
-  );
-
-  const signOutCloud = useCallback(async () => {
-    await logoutCloudAccount(apiVault.backendUrl);
-    setCloudUser(null);
-  }, [apiVault.backendUrl]);
 
   const homeTracks = useMemo(() => {
     const playable = catalog.filter((t) => t.source !== 'seed' && t.streamType !== 'none');
@@ -529,8 +349,6 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       searchResults,
       isSearching,
       isLoadingCatalog,
-      cloudUser,
-      backendOnline,
       toggleLike,
       recordPlay,
       recordComplete,
@@ -541,13 +359,9 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       removeTrackFromPlaylist,
       addRecentSearch,
       clearRecentSearches,
-      updateDisplayName,
       updateApiVault,
       clearApiVault,
       registerTracks,
-      signInCloud,
-      signUpCloud,
-      signOutCloud,
     }),
     [
       tasteProfile,
@@ -564,8 +378,6 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       searchResults,
       isSearching,
       isLoadingCatalog,
-      cloudUser,
-      backendOnline,
       toggleLike,
       recordPlay,
       recordComplete,
@@ -576,13 +388,9 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       removeTrackFromPlaylist,
       addRecentSearch,
       clearRecentSearches,
-      updateDisplayName,
       updateApiVault,
       clearApiVault,
       registerTracks,
-      signInCloud,
-      signUpCloud,
-      signOutCloud,
     ],
   );
 

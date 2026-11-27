@@ -1,122 +1,21 @@
 import type {
   ApiVault,
-  ArtistSpotlight,
   LyricLine,
   LyricsResult,
   MoodId,
-  RadioStation,
   Track,
 } from '../types/music';
-import { SEED_RADIO_STATIONS, SEED_TRACKS } from './seedCatalog';
+import { SEED_TRACKS } from './seedCatalog';
 import { normalizeText } from '../utils/formatTime';
-import {
-  recommendViaBackend,
-  resolveFullSongViaBackend,
-  searchMusicViaBackend,
-} from './cloudApi';
 import {
   fetchNativeRecommendations,
   isNativeAndroidPlaybackAvailable,
   searchNativeCatalog,
 } from './nativeMusicBridge';
 
-export interface PublicApiEntry {
-  name: string;
-  auth: 'No' | 'apiKey' | 'OAuth';
-  cors: 'Yes' | 'Unknown';
-  role: string;
-  docsUrl: string;
-  keyField?: keyof ApiVault;
-}
-
-export const PUBLIC_MUSIC_API_DIRECTORY: PublicApiEntry[] = [
-  {
-    name: 'YouTube Data API v3',
-    auth: 'apiKey',
-    cors: 'Yes',
-    role: 'Full-length music catalog search & official YouTube IFrame full-song playback',
-    docsUrl: 'https://developers.google.com/youtube/v3',
-    keyField: 'youtubeApiKey',
-  },
-  {
-    name: 'iTunes Search',
-    auth: 'No',
-    cors: 'Yes',
-    role: 'Catalog search, album covers & 30s AAC audio previews',
-    docsUrl: 'https://affiliate.itunes.apple.com/resources/documentation/itunes-store-web-service-search-api/',
-  },
-  {
-    name: 'Audius',
-    auth: 'No',
-    cors: 'Yes',
-    role: 'Full-length independent & electronic audio streams',
-    docsUrl: 'https://docs.audius.org/developers/api',
-  },
-  {
-    name: 'ListenBrainz',
-    auth: 'No',
-    cors: 'Yes',
-    role: 'Open fresh releases radar & scrobble discovery',
-    docsUrl: 'https://listenbrainz.readthedocs.io/en/latest/users/api/index.html',
-  },
-  {
-    name: 'Radio Browser',
-    auth: 'No',
-    cors: 'Yes',
-    role: 'Live global internet radio streams by mood & genre',
-    docsUrl: 'https://api.radio-browser.info/',
-  },
-  {
-    name: 'Lyrics.ovh',
-    auth: 'No',
-    cors: 'Yes',
-    role: 'Instant song lyrics lookup in Now Playing',
-    docsUrl: 'https://lyricsovh.docs.apiary.io',
-  },
-  {
-    name: 'Genrenator',
-    auth: 'No',
-    cors: 'Yes',
-    role: 'Surprise genre & vibe roulette seeds',
-    docsUrl: 'https://binaryjazz.us/genrenator-api/',
-  },
-  {
-    name: 'TheAudioDB',
-    auth: 'apiKey',
-    cors: 'Yes',
-    role: 'Artist biographies, styles, moods & fanart (default test key: 123)',
-    docsUrl: 'https://www.theaudiodb.com/',
-    keyField: 'theAudioDbApiKey',
-  },
-  {
-    name: 'Last.fm',
-    auth: 'apiKey',
-    cors: 'Yes',
-    role: 'Spotify-like track.getSimilar, artist.getSimilar & tag top tracks',
-    docsUrl: 'https://www.last.fm/api',
-    keyField: 'lastfmApiKey',
-  },
-  {
-    name: 'TasteDive',
-    auth: 'apiKey',
-    cors: 'Unknown',
-    role: 'Similar artist recommendation graph (via Next.js server proxy)',
-    docsUrl: 'https://tastedive.com/read/api',
-    keyField: 'tastediveApiKey',
-  },
-  {
-    name: 'Jamendo',
-    auth: 'OAuth',
-    cors: 'Yes',
-    role: 'Full-length Creative Commons music catalog by mood tag',
-    docsUrl: 'https://developer.jamendo.com/v3.0/docs',
-    keyField: 'jamendoClientId',
-  },
-];
-
 const responseCache = new Map<string, { expiresAt: number; data: unknown }>();
 
-async function fetchJsonWithTimeout<T>(url: string, timeoutMs = 6500): Promise<T | null> {
+async function fetchJsonWithTimeout<T>(url: string, timeoutMs = 6000): Promise<T | null> {
   const cached = responseCache.get(url);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.data as T;
@@ -137,12 +36,83 @@ async function fetchJsonWithTimeout<T>(url: string, timeoutMs = 6500): Promise<T
   }
 }
 
+function shouldQueryBackend(vault: ApiVault): boolean {
+  if (isNativeAndroidPlaybackAvailable()) return false;
+  if (vault.backendUrl.trim().length > 0) return true;
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname;
+  return import.meta.env.MODE === 'test' || host === 'localhost' || host === '127.0.0.1';
+}
+
+function buildBackendUrl(vault: ApiVault, path: string): string {
+  const clean = vault.backendUrl.trim().replace(/\/$/, '');
+  return clean ? `${clean}${path}` : path;
+}
+
+async function resolveViaOptionalBackend(
+  artist: string,
+  title: string,
+  vault: ApiVault,
+): Promise<{ youtubeVideoId: string; durationSec: number; artworkUrl: string } | null> {
+  if (!shouldQueryBackend(vault)) return null;
+  const url = buildBackendUrl(
+    vault,
+    `/api/music/resolve-full?artist=${encodeURIComponent(artist)}&title=${encodeURIComponent(title)}`,
+  );
+  const res = await fetchJsonWithTimeout<{
+    resolved?: { youtubeVideoId: string; durationSec: number; artworkUrl: string } | null;
+  }>(url, 3500);
+  return res?.resolved ?? null;
+}
+
+async function searchViaOptionalBackend(query: string, vault: ApiVault): Promise<Track[] | null> {
+  if (!shouldQueryBackend(vault)) return null;
+  const url = buildBackendUrl(vault, `/api/music/search?q=${encodeURIComponent(query)}`);
+  const res = await fetchJsonWithTimeout<{ tracks?: Track[] }>(url, 4000);
+  return res?.tracks ?? null;
+}
+
+async function recommendViaOptionalBackend(
+  artist: string,
+  title: string,
+  vault: ApiVault,
+): Promise<Track[] | null> {
+  if (!shouldQueryBackend(vault)) return null;
+  const url = buildBackendUrl(
+    vault,
+    `/api/music/recommend?artist=${encodeURIComponent(artist)}&title=${encodeURIComponent(title)}`,
+  );
+  const res = await fetchJsonWithTimeout<{ tracks?: Track[] }>(url, 4000);
+  return res?.tracks ?? null;
+}
+
 function parseIsoDuration(iso?: string): number {
   if (!iso) return 180;
   const m = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/i.exec(iso.trim());
   if (!m) return 180;
   const total = Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0);
   return total > 0 ? total : 180;
+}
+
+function inferMoodsFromGenre(genre: string): string[] {
+  const g = normalizeText(genre);
+  const moods: string[] = ['for-you'];
+  if (g.includes('jazz') || g.includes('blues') || g.includes('acoustic')) {
+    moods.push('jazz', 'late-night', 'chill');
+  }
+  if (g.includes('electronic') || g.includes('dance') || g.includes('house')) {
+    moods.push('workout', 'late-night', 'focus');
+  }
+  if (g.includes('ambient') || g.includes('classical') || g.includes('lo-fi') || g.includes('chill')) {
+    moods.push('focus', 'chill');
+  }
+  if (g.includes('pop') || g.includes('indie') || g.includes('alternative')) {
+    moods.push('indie', 'chill');
+  }
+  if (g.includes('hip-hop') || g.includes('rap') || g.includes('r&b')) {
+    moods.push('late-night', 'workout');
+  }
+  return Array.from(new Set(moods));
 }
 
 export async function searchYouTubeDirect(
@@ -198,7 +168,7 @@ export async function searchYouTubeDirect(
         id: `yt-${videoId}`,
         title,
         artist,
-        album: 'YouTube Music Catalog',
+        album: 'YouTube Music',
         artworkUrl:
           item.snippet?.thumbnails?.high?.url ||
           item.snippet?.thumbnails?.medium?.url ||
@@ -218,20 +188,13 @@ export async function searchYouTubeDirect(
     .filter((t): t is Track => t !== null);
 }
 
-export async function resolveFullSongTrack(
-  track: Track,
-  vault: ApiVault,
-): Promise<Track> {
+export async function resolveFullSongTrack(track: Track, vault: ApiVault): Promise<Track> {
   if (track.streamType === 'full' || (track.streamType === 'youtube' && track.youtubeVideoId)) {
     return track;
   }
 
-  // 0. Native Android APK resolves full YouTube Music tracks directly without API keys
   if (isNativeAndroidPlaybackAvailable()) {
-    const nativeHits = await searchNativeCatalog(
-      `${track.artist} ${track.title} official audio`,
-      3,
-    );
+    const nativeHits = await searchNativeCatalog(`${track.artist} ${track.title} official audio`, 3);
     if (nativeHits[0]?.youtubeVideoId) {
       return {
         ...track,
@@ -243,8 +206,7 @@ export async function resolveFullSongTrack(
     }
   }
 
-  // 1. Try Next.js server resolver (handles server-side YOUTUBE_API_KEY cleanly)
-  const serverResolved = await resolveFullSongViaBackend(track.artist, track.title, vault);
+  const serverResolved = await resolveViaOptionalBackend(track.artist, track.title, vault);
   if (serverResolved?.youtubeVideoId) {
     return {
       ...track,
@@ -255,9 +217,12 @@ export async function resolveFullSongTrack(
     };
   }
 
-  // 2. Fallback to direct browser YouTube Data API v3 key if configured in API Vault
   if (vault.youtubeApiKey.trim()) {
-    const ytHits = await searchYouTubeDirect(`${track.artist} ${track.title} official audio`, vault.youtubeApiKey, 2);
+    const ytHits = await searchYouTubeDirect(
+      `${track.artist} ${track.title} official audio`,
+      vault.youtubeApiKey,
+      2,
+    );
     if (ytHits[0]?.youtubeVideoId) {
       return {
         ...track,
@@ -273,7 +238,6 @@ export async function resolveFullSongTrack(
 
 interface ItunesResultItem {
   trackId?: number;
-  collectionId?: number;
   trackName?: string;
   collectionName?: string;
   artistName?: string;
@@ -284,27 +248,6 @@ interface ItunesResultItem {
   releaseDate?: string;
   trackViewUrl?: string;
   trackExplicitness?: string;
-}
-
-function inferMoodsFromGenre(genre: string): string[] {
-  const g = normalizeText(genre);
-  const moods: string[] = ['for-you'];
-  if (g.includes('jazz') || g.includes('blues') || g.includes('acoustic')) {
-    moods.push('jazz', 'late-night', 'chill');
-  }
-  if (g.includes('electronic') || g.includes('dance') || g.includes('house')) {
-    moods.push('workout', 'late-night', 'focus');
-  }
-  if (g.includes('ambient') || g.includes('classical') || g.includes('lo-fi') || g.includes('chill')) {
-    moods.push('focus', 'chill');
-  }
-  if (g.includes('pop') || g.includes('indie') || g.includes('alternative')) {
-    moods.push('indie', 'chill');
-  }
-  if (g.includes('hip-hop') || g.includes('rap') || g.includes('r&b')) {
-    moods.push('late-night', 'workout');
-  }
-  return Array.from(new Set(moods));
 }
 
 function normalizeItunesTrack(item: ItunesResultItem): Track | null {
@@ -361,7 +304,7 @@ function normalizeAudiusTrack(item: AudiusItem): Track | null {
     id: `audius-${item.id}`,
     title: item.title,
     artist: item.user?.name || 'Independent Artist',
-    album: 'Audius Discovery',
+    album: 'Audius',
     artworkUrl: item.artwork?.['480x480'] || item.artwork?.['150x150'] || '',
     audioUrl: `https://discoveryprovider.audius.co/v1/tracks/${encodeURIComponent(item.id)}/stream?app_name=RiVibe`,
     streamType: 'full',
@@ -386,88 +329,6 @@ export async function searchAudius(term: string, limit = 10): Promise<Track[]> {
   const data = await fetchJsonWithTimeout<{ data?: AudiusItem[] }>(url);
   if (!data?.data) return [];
   return data.data.map(normalizeAudiusTrack).filter((t): t is Track => t !== null);
-}
-
-interface JamendoTrackItem {
-  id?: string;
-  name?: string;
-  artist_name?: string;
-  album_name?: string;
-  duration?: number;
-  audio?: string;
-  album_image?: string;
-  musicinfo?: { tags?: { genres?: string[] } };
-}
-
-export async function searchJamendo(
-  query: string,
-  clientId: string,
-  limit = 10,
-): Promise<Track[]> {
-  if (!clientId.trim()) return [];
-  const url = `https://api.jamendo.com/v3.0/tracks/?client_id=${encodeURIComponent(clientId)}&format=json&limit=${limit}&search=${encodeURIComponent(query)}&include=musicinfo`;
-  const data = await fetchJsonWithTimeout<{ results?: JamendoTrackItem[] }>(url);
-  if (!data?.results) return [];
-  return data.results
-    .filter((item) => item.id && item.name && item.audio)
-    .map((item) => {
-      const genres = item.musicinfo?.tags?.genres?.length
-        ? item.musicinfo.tags.genres
-        : ['Indie'];
-      return {
-        id: `jamendo-${item.id}`,
-        title: item.name!,
-        artist: item.artist_name || 'Jamendo Artist',
-        album: item.album_name || 'Jamendo CC',
-        artworkUrl: item.album_image || '',
-        audioUrl: item.audio!,
-        streamType: 'full',
-        durationSec: item.duration ?? 200,
-        genres,
-        moods: inferMoodsFromGenre(genres.join(' ')),
-        source: 'jamendo',
-        popularity: 76,
-      };
-    });
-}
-
-async function fetchLastFmSimilarNames(seedTrack: Track, apiKey: string): Promise<string[]> {
-  if (!apiKey.trim()) return [];
-  const url = `https://ws.audioscrobbler.com/2.0/?method=track.getSimilar&artist=${encodeURIComponent(seedTrack.artist)}&track=${encodeURIComponent(seedTrack.title)}&api_key=${encodeURIComponent(apiKey)}&format=json&limit=8`;
-  const data = await fetchJsonWithTimeout<{
-    similartracks?: { track?: Array<{ name?: string; artist?: { name?: string } }> };
-  }>(url);
-  if (!data?.similartracks?.track) return [];
-  return data.similartracks.track
-    .map((t) => `${t.name ?? ''} ${t.artist?.name ?? ''}`.trim())
-    .filter(Boolean)
-    .slice(0, 4);
-}
-
-async function fetchTasteDiveSimilarArtists(artist: string, apiKey: string): Promise<string[]> {
-  if (!apiKey.trim()) return [];
-  const url = `https://tastedive.com/api/similar?q=${encodeURIComponent(artist)}&type=music&limit=5&k=${encodeURIComponent(apiKey)}`;
-  const data = await fetchJsonWithTimeout<{
-    Similar?: { Results?: Array<{ Name?: string }> };
-  }>(url);
-  return (data?.Similar?.Results ?? [])
-    .map((r) => r.Name ?? '')
-    .filter(Boolean)
-    .slice(0, 4);
-}
-
-export async function fetchListenBrainzFreshCount(): Promise<Array<{ title: string; artist: string }>> {
-  const url = 'https://api.listenbrainz.org/1/explore/fresh-releases/?days=7';
-  const data = await fetchJsonWithTimeout<{
-    payload?: { releases?: Array<{ release_name?: string; artist_credit_name?: string }> };
-  }>(url, 5000);
-  return (data?.payload?.releases ?? [])
-    .slice(0, 6)
-    .map((r) => ({
-      title: r.release_name ?? '',
-      artist: r.artist_credit_name ?? '',
-    }))
-    .filter((r) => r.title && r.artist);
 }
 
 function streamRank(track: Track): number {
@@ -503,10 +364,10 @@ export async function searchAllMusic(
   if (!trimmed) return SEED_TRACKS;
 
   const nativePromise = isNativeAndroidPlaybackAvailable()
-    ? searchNativeCatalog(trimmed, 12)
+    ? searchNativeCatalog(trimmed, 16)
     : Promise.resolve<Track[]>([]);
 
-  const backendPromise = searchMusicViaBackend(trimmed, fullOnly, vault);
+  const backendPromise = searchViaOptionalBackend(trimmed, vault);
 
   const [nativeTracks, backendTracks] = await Promise.all([nativePromise, backendPromise]);
   if (nativeTracks.length > 0 && (!backendTracks || backendTracks.length === 0)) {
@@ -518,17 +379,13 @@ export async function searchAllMusic(
       : backendTracks;
   }
 
-  const [ytTracks, audiusTracks, jamendoTracks, itunesTracks] = await Promise.all([
+  const [ytTracks, audiusTracks, itunesTracks] = await Promise.all([
     searchYouTubeDirect(trimmed, vault.youtubeApiKey, 10),
     searchAudius(trimmed, 10),
-    searchJamendo(trimmed, vault.jamendoClientId, 8),
     fullOnly ? Promise.resolve([]) : searchItunes(trimmed, 14),
   ]);
 
-  const merged = mergeAndDeduplicateTracks(
-    [nativeTracks, ytTracks, audiusTracks, jamendoTracks, itunesTracks],
-    fullOnly,
-  );
+  const merged = mergeAndDeduplicateTracks([nativeTracks, ytTracks, audiusTracks, itunesTracks], fullOnly);
   if (merged.length > 0) return merged;
 
   const q = normalizeText(trimmed);
@@ -558,25 +415,18 @@ export async function fetchDiscoveryTracks(
 ): Promise<Track[]> {
   const query = MOOD_QUERY_MAP[mood] || MOOD_QUERY_MAP.all;
 
-  const [nativeTracks, ytTracks, audiusTrending, jamendo, itunes, freshLb] = await Promise.all([
-    isNativeAndroidPlaybackAvailable()
-      ? fetchNativeRecommendations({ mood, limit: 14 })
-      : Promise.resolve<Track[]>([]),
-    searchYouTubeDirect(query, vault.youtubeApiKey, 8),
+  if (isNativeAndroidPlaybackAvailable()) {
+    const nativeTracks = await fetchNativeRecommendations({ mood, limit: 20 });
+    if (nativeTracks.length > 0) return nativeTracks;
+  }
+
+  const [ytTracks, audiusTrending, itunes] = await Promise.all([
+    searchYouTubeDirect(query, vault.youtubeApiKey, 10),
     fetchAudiusTrending(12),
-    searchJamendo(query, vault.jamendoClientId, 8),
     fullOnly ? Promise.resolve([]) : searchItunes(query, 12),
-    fetchListenBrainzFreshCount(),
   ]);
 
-  const lbLookup = !fullOnly && freshLb[0]
-    ? await searchItunes(`${freshLb[0].artist} ${freshLb[0].title}`, 3)
-    : [];
-
-  const liveTracks = mergeAndDeduplicateTracks(
-    [nativeTracks, ytTracks, audiusTrending, jamendo, itunes, lbLookup],
-    fullOnly,
-  );
+  const liveTracks = mergeAndDeduplicateTracks([ytTracks, audiusTrending, itunes], fullOnly);
   if (liveTracks.length > 0) return liveTracks;
   return mergeAndDeduplicateTracks([SEED_TRACKS], fullOnly);
 }
@@ -616,20 +466,15 @@ export async function fetchPersonalizedRecommendations(
   fullOnly = false,
 ): Promise<Track[]> {
   const primaryArtist = extractPrimaryArtist(seedTrack.artist);
-  const primaryGenre =
-    seedTrack.genres.find((g) => normalizeText(g) !== 'youtube music') ?? '';
+  const primaryGenre = seedTrack.genres.find((g) => normalizeText(g) !== 'youtube music') ?? '';
   const similarityQuery = primaryGenre ? `${primaryArtist} ${primaryGenre}` : primaryArtist;
-
-  const backendRecs = await recommendViaBackend(primaryArtist, seedTrack.title, vault);
 
   const [
     nativeRecs,
-    lastfmQueries,
-    tastediveArtists,
+    backendRecs,
     ytMatches,
     audiusArtistMatches,
     audiusGenreMatches,
-    jamendoMatches,
     itunesSimilarMatches,
   ] = await Promise.all([
     isNativeAndroidPlaybackAvailable()
@@ -641,38 +486,19 @@ export async function fetchPersonalizedRecommendations(
           limit: 20,
         })
       : Promise.resolve<Track[]>([]),
-    fetchLastFmSimilarNames(seedTrack, vault.lastfmApiKey),
-    fetchTasteDiveSimilarArtists(primaryArtist, vault.tastediveApiKey),
+    recommendViaOptionalBackend(primaryArtist, seedTrack.title, vault),
     searchYouTubeDirect(`${primaryArtist} ${primaryGenre || 'songs'}`, vault.youtubeApiKey, 8),
     searchAudius(primaryArtist, 6),
     primaryGenre ? searchAudius(primaryGenre, 6) : Promise.resolve<Track[]>([]),
-    searchJamendo(primaryGenre || 'chill', vault.jamendoClientId, 8),
     fullOnly ? Promise.resolve([]) : searchItunes(similarityQuery, 10),
   ]);
 
-  const extraQueries = [...lastfmQueries.slice(0, 3), ...tastediveArtists.slice(0, 3)];
-  const extraResults = await Promise.all(
-    extraQueries.map(async (q) => {
-      if (isNativeAndroidPlaybackAvailable()) {
-        return searchNativeCatalog(q, 3);
-      }
-      const yt = vault.youtubeApiKey.trim()
-        ? await searchYouTubeDirect(q, vault.youtubeApiKey, 3)
-        : [];
-      if (yt.length > 0) return yt;
-      return fullOnly ? searchAudius(q, 4) : searchItunes(q, 4);
-    }),
-  );
-
-  // Preserve similarity ranking order: native YT Radio -> backend/Last.fm/TasteDive -> artist/genre matches
   const prioritized = mergePreserveSimilarityOrder(
     [
       nativeRecs,
       backendRecs ?? [],
-      ...extraResults,
       ytMatches,
       audiusArtistMatches,
-      jamendoMatches,
       itunesSimilarMatches,
       audiusGenreMatches,
     ],
@@ -686,47 +512,6 @@ export async function fetchPersonalizedRecommendations(
 
   const discoveryFallback = await fetchDiscoveryTracks(mood, vault, fullOnly);
   return mergePreserveSimilarityOrder([prioritized, discoveryFallback], seedTrack, fullOnly);
-}
-
-interface RadioBrowserRaw {
-  stationuuid?: string;
-  name?: string;
-  url_resolved?: string;
-  url?: string;
-  favicon?: string;
-  country?: string;
-  tags?: string;
-  bitrate?: number;
-  votes?: number;
-}
-
-export async function fetchRadioStations(tagOrQuery = ''): Promise<RadioStation[]> {
-  const trimmed = tagOrQuery.trim();
-  const url = trimmed
-    ? `https://de1.api.radio-browser.info/json/stations/search?tag=${encodeURIComponent(trimmed)}&limit=18&hidebroken=true&order=votes&reverse=true`
-    : 'https://de1.api.radio-browser.info/json/stations/topvote/18';
-
-  const data = await fetchJsonWithTimeout<RadioBrowserRaw[]>(url);
-  if (!data || data.length === 0) return SEED_RADIO_STATIONS;
-
-  const stations = data
-    .filter((s) => s.stationuuid && s.name && (s.url_resolved || s.url))
-    .map((s) => ({
-      id: s.stationuuid!,
-      name: s.name!.trim(),
-      streamUrl: (s.url_resolved || s.url)!,
-      favicon: s.favicon || '',
-      country: s.country || 'Global',
-      tags: (s.tags || 'music')
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean)
-        .slice(0, 4),
-      bitrate: s.bitrate ?? 128,
-      votes: s.votes ?? 0,
-    }));
-
-  return stations.length > 0 ? stations : SEED_RADIO_STATIONS;
 }
 
 function parseLrcSyncedLines(syncedLyrics?: string): LyricLine[] | undefined {
@@ -762,10 +547,7 @@ export async function fetchLyrics(artist: string, title: string): Promise<Lyrics
   const lrcUrl =
     `https://lrclib.net/api/get?artist_name=${encodeURIComponent(artist)}` +
     `&track_name=${encodeURIComponent(cleanTitle)}`;
-  const lrc = await fetchJsonWithTimeout<{ plainLyrics?: string; syncedLyrics?: string }>(
-    lrcUrl,
-    5500,
-  );
+  const lrc = await fetchJsonWithTimeout<{ plainLyrics?: string; syncedLyrics?: string }>(lrcUrl, 5500);
   const syncedLines = parseLrcSyncedLines(lrc?.syncedLyrics);
   const resolvedLrc =
     lrc?.plainLyrics?.trim() ||
@@ -787,48 +569,4 @@ export async function fetchLyrics(artist: string, title: string): Promise<Lyrics
     lyrics: 'Lyrics are not available for this track right now.',
     source: 'unavailable',
   };
-}
-
-export async function fetchArtistSpotlight(
-  artistName: string,
-  vault: ApiVault,
-): Promise<ArtistSpotlight | null> {
-  const key = encodeURIComponent(vault.theAudioDbApiKey || '123');
-  const url = `https://www.theaudiodb.com/api/v1/json/${key}/search.php?s=${encodeURIComponent(artistName)}`;
-  const data = await fetchJsonWithTimeout<{
-    artists?: Array<{
-      strArtist?: string;
-      strGenre?: string;
-      strMood?: string;
-      strStyle?: string;
-      strBiographyEN?: string;
-      strArtistBanner?: string;
-      strArtistThumb?: string;
-      intFormedYear?: string;
-      strCountry?: string;
-    }> | null;
-  }>(url);
-
-  const first = data?.artists?.[0];
-  if (!first?.strArtist) return null;
-
-  return {
-    name: first.strArtist,
-    genre: first.strGenre || 'Mixed',
-    mood: first.strMood || 'Atmospheric',
-    style: first.strStyle || 'Contemporary',
-    biography: first.strBiographyEN || '',
-    bannerUrl: first.strArtistBanner || '',
-    thumbUrl: first.strArtistThumb || '',
-    formedYear: first.intFormedYear || undefined,
-    country: first.strCountry || undefined,
-  };
-}
-
-export async function fetchSerendipitousGenre(): Promise<string> {
-  const result = await fetchJsonWithTimeout<string>(
-    'https://binaryjazz.us/wp-json/genrenator/v1/genre/',
-    4000,
-  );
-  return typeof result === 'string' && result.trim() ? result.trim() : 'ambient synth pop';
 }

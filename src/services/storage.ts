@@ -8,7 +8,6 @@ const KEYS = {
   vault: 'rivibe_api_vault_v1',
   playlists: 'rivibe_playlists_v1',
   tracks: 'rivibe_saved_tracks_v1',
-  authToken: 'rivibe_cloud_token_v1',
   queue: 'rivibe_queue_v1',
   recentSearches: 'rivibe_recent_searches_v1',
 } as const;
@@ -39,29 +38,15 @@ function safeWriteJson(key: string, value: unknown): void {
 export function createDefaultTasteProfile(): TasteProfile {
   return {
     version: STORAGE_VERSION,
-    displayName: 'Manoj',
-    genreWeights: {
-      'synth-pop': 2.6,
-      electronic: 2.2,
-      indie: 1.8,
-      jazz: 1.4,
-      'lo-fi': 1.6,
-    },
-    artistWeights: {
-      'troye sivan': 2.0,
-      'porter robinson': 1.8,
-      'miles davis': 1.3,
-    },
-    moodWeights: {
-      chill: 2.0,
-      'late-night': 1.6,
-      focus: 1.4,
-    },
-    likedTrackIds: ['seed-blue-neighbourhood', 'seed-level-high'],
+    displayName: 'Listener',
+    genreWeights: {},
+    artistWeights: {},
+    moodWeights: {},
+    likedTrackIds: [],
     dislikedTrackIds: [],
     playCounts: {},
-    recentTrackIds: ['seed-blue-neighbourhood', 'seed-coming-together', 'seed-bitches-brew'],
-    seedArtists: ['Troye Sivan', 'Porter Robinson', 'Miles Davis'],
+    recentTrackIds: [],
+    seedArtists: [],
     preferredMood: 'all',
   };
 }
@@ -78,11 +63,11 @@ export function loadTasteProfile(): TasteProfile {
     genreWeights: parsed.genreWeights ?? defaults.genreWeights,
     artistWeights: parsed.artistWeights ?? defaults.artistWeights,
     moodWeights: parsed.moodWeights ?? defaults.moodWeights,
-    likedTrackIds: Array.isArray(parsed.likedTrackIds) ? parsed.likedTrackIds : defaults.likedTrackIds,
+    likedTrackIds: Array.isArray(parsed.likedTrackIds) ? parsed.likedTrackIds : [],
     dislikedTrackIds: Array.isArray(parsed.dislikedTrackIds) ? parsed.dislikedTrackIds : [],
     playCounts: parsed.playCounts ?? {},
-    recentTrackIds: Array.isArray(parsed.recentTrackIds) ? parsed.recentTrackIds : defaults.recentTrackIds,
-    seedArtists: Array.isArray(parsed.seedArtists) ? parsed.seedArtists : defaults.seedArtists,
+    recentTrackIds: Array.isArray(parsed.recentTrackIds) ? parsed.recentTrackIds : [],
+    seedArtists: Array.isArray(parsed.seedArtists) ? parsed.seedArtists : [],
   };
 }
 
@@ -94,12 +79,6 @@ export function createDefaultApiVault(): ApiVault {
   return {
     version: STORAGE_VERSION,
     youtubeApiKey: import.meta.env.VITE_YOUTUBE_API_KEY ?? '',
-    lastfmApiKey: import.meta.env.VITE_LASTFM_API_KEY ?? '',
-    tastediveApiKey: import.meta.env.VITE_TASTEDIVE_API_KEY ?? '',
-    jamendoClientId: import.meta.env.VITE_JAMENDO_CLIENT_ID ?? '',
-    theAudioDbApiKey: import.meta.env.VITE_THEAUDIODB_API_KEY || '123',
-    geniusAccessToken: import.meta.env.VITE_GENIUS_ACCESS_TOKEN ?? '',
-    spotifyClientId: import.meta.env.VITE_SPOTIFY_CLIENT_ID ?? '',
     githubRepoUrl: import.meta.env.VITE_GITHUB_REPO_URL || 'https://github.com/Xani113/Rivibe',
     backendUrl: import.meta.env.VITE_API_BASE_URL ?? '',
   };
@@ -114,7 +93,6 @@ export function loadApiVault(): ApiVault {
   return {
     ...defaults,
     ...parsed,
-    theAudioDbApiKey: parsed.theAudioDbApiKey || defaults.theAudioDbApiKey,
     githubRepoUrl: parsed.githubRepoUrl || defaults.githubRepoUrl,
     backendUrl: parsed.backendUrl ?? defaults.backendUrl,
   };
@@ -128,34 +106,11 @@ export function resetVaultSecrets(): ApiVault {
   const clean: ApiVault = {
     version: STORAGE_VERSION,
     youtubeApiKey: '',
-    lastfmApiKey: '',
-    tastediveApiKey: '',
-    jamendoClientId: '',
-    theAudioDbApiKey: '123',
-    geniusAccessToken: '',
-    spotifyClientId: '',
     githubRepoUrl: 'https://github.com/Xani113/Rivibe',
     backendUrl: '',
   };
   saveApiVault(clean);
   return clean;
-}
-
-export function loadAuthToken(): string | null {
-  try {
-    return localStorage.getItem(KEYS.authToken);
-  } catch {
-    return null;
-  }
-}
-
-export function saveAuthToken(token: string | null): void {
-  try {
-    if (!token) localStorage.removeItem(KEYS.authToken);
-    else localStorage.setItem(KEYS.authToken, token);
-  } catch {
-    // Ignore storage errors cleanly
-  }
 }
 
 export function loadPlaylists(): Playlist[] {
