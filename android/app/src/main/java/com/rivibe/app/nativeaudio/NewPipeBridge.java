@@ -8,7 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import javax.annotation.Nonnull;
+import androidx.annotation.NonNull;
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import okhttp3.RequestBody;
@@ -146,7 +146,7 @@ public final class NewPipeBridge {
         }
 
         @Override
-        public Response execute(@Nonnull Request request) throws IOException, ReCaptchaException {
+        public Response execute(@NonNull Request request) throws IOException, ReCaptchaException {
             String method = request.httpMethod();
             String url = request.url();
             byte[] data = request.dataToSend();
