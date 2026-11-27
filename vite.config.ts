@@ -24,9 +24,7 @@ export default defineConfig(({ mode }) => {
         includeAssets: [
           'icons/icon-192.png',
           'icons/icon-512.png',
-          'icons/icon-192.svg',
-          'icons/icon-512.svg',
-          'icons/apple-touch-icon.svg',
+          'icons/apple-touch-icon.png',
         ],
         manifest: {
           name: 'RiVibe — Music & Queue Studio',
@@ -34,7 +32,7 @@ export default defineConfig(({ mode }) => {
           description:
             'Fast, distraction-free music streaming with smart queue controls, playlists, and synced lyrics.',
           theme_color: '#090b10',
-          background_color: '#090b10',
+          background_color: '#0c101b',
           display: 'standalone',
           orientation: 'any',
           start_url: '.',
@@ -52,12 +50,6 @@ export default defineConfig(({ mode }) => {
               sizes: '512x512',
               type: 'image/png',
               purpose: 'any maskable',
-            },
-            {
-              src: 'icons/icon-192.svg',
-              sizes: '192x192',
-              type: 'image/svg+xml',
-              purpose: 'any',
             },
           ],
           shortcuts: [

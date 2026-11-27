@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  AudioLines,
   Home,
   Library,
   ListMusic,
@@ -10,6 +9,7 @@ import {
 } from 'lucide-react';
 import type { AppTab, Playlist } from '../types/music';
 import { isNativeAndroidPlaybackAvailable } from '../services/nativeMusicBridge';
+import rivibeLogo from '../assets/rivibe-logo.png';
 
 interface NavShellProps {
   activeTab: AppTab;
@@ -64,9 +64,11 @@ export function NavShell({
         {/* Brand Header */}
         <div className="px-4 pt-5 pb-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
-            <span className="w-8 h-8 rounded-lg bg-[#22d3a6] text-[#042019] flex items-center justify-center shrink-0">
-              <AudioLines className="w-4 h-4" aria-hidden="true" />
-            </span>
+            <img
+              src={rivibeLogo}
+              alt=""
+              className="w-8 h-8 rounded-lg object-cover bg-[#0C101B] shrink-0"
+            />
             <div className="rv-sidebar-label min-w-0">
               <div className="text-[15px] font-bold tracking-tight text-[#f4f5f7] leading-none">
                 RiVibe
@@ -217,9 +219,11 @@ export function NavShell({
         style={{ paddingTop: 'max(12px, var(--rv-safe-top))' }}
       >
         <div className="flex items-center gap-2">
-          <span className="w-7 h-7 rounded-lg bg-[#22d3a6] text-[#042019] flex items-center justify-center">
-            <AudioLines className="w-4 h-4" aria-hidden="true" />
-          </span>
+          <img
+            src={rivibeLogo}
+            alt=""
+            className="w-7 h-7 rounded-lg object-cover bg-[#0C101B] shrink-0"
+          />
           <span className="text-[15px] font-bold tracking-tight text-[#f4f5f7]">RiVibe</span>
         </div>
 
