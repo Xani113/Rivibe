@@ -98,7 +98,7 @@ function RiVibeStudio() {
   };
 
   return (
-    <div className="min-h-dvh w-full bg-[#090b10] text-[#f4f5f7] flex">
+    <div className="rv-app-shell min-h-dvh w-full bg-[#090b10] text-[#f4f5f7] flex flex-col md:flex-row">
       {/* Subtle Top Studio Ambient Glow */}
       <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -top-36 left-1/4 w-[520px] h-[360px] rounded-full bg-[rgba(34,211,166,0.08)] blur-[140px]" />
@@ -133,7 +133,7 @@ function RiVibeStudio() {
               likedIds={tasteProfile.likedTrackIds}
               playlists={playlists}
               onMoodChange={setActiveMood}
-              onPlayTrack={(t, list) => void playTrack(t, list)}
+              onPlayTrack={(t, list) => void playTrack(t, list, { appendSimilar: true })}
               onAddToQueue={addToQueue}
               onPlayNext={playNext}
               onToggleLike={toggleLike}
@@ -156,7 +156,7 @@ function RiVibeStudio() {
               onQueryChange={setSearchQuery}
               onSubmitSearch={addRecentSearch}
               onClearRecentSearches={clearRecentSearches}
-              onPlayTrack={(t, list) => void playTrack(t, list)}
+              onPlayTrack={(t, list) => void playTrack(t, list, { appendSimilar: true })}
               onAddToQueue={addToQueue}
               onPlayNext={playNext}
               onToggleLike={toggleLike}

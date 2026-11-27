@@ -106,6 +106,9 @@ function PlayerHarness() {
       <div data-testid="queue-toast">{queueToast ?? ''}</div>
 
       <button onClick={() => void playTrack(testTracks[0]!, testTracks)}>Play First</button>
+      <button onClick={() => void playTrack(testTracks[0]!, [testTracks[0]!], { appendSimilar: true })}>
+        Play Isolated With Similar
+      </button>
       <button onClick={() => addToQueue(extraTrack)}>Add Third To Queue</button>
       <button onClick={() => playNext(fourthTrack)}>Play Fourth Next</button>
       <button onClick={() => removeFromQueue(0)}>Remove Index 0</button>
@@ -308,5 +311,23 @@ describe('PlayerContext & Queue Engine', () => {
 
     await user.click(screen.getByRole('button', { name: 'Toggle' }));
     expect(mockAdapter.pause).toHaveBeenCalled();
+  });
+
+  it('auto-populates Up Next queue with similar recommendations when playing an isolated search track', async () => {
+    const user = userEvent.setup();
+    render(
+      <LibraryProvider>
+        <PlayerProvider>
+          <PlayerHarness />
+        </PlayerProvider>
+      </LibraryProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Play Isolated With Similar' }));
+
+    await waitFor(() => {
+      expect(Number(screen.getByTestId('queue-len').textContent)).toBeGreaterThan(1);
+    });
+    expect(screen.getByTestId('now-title')).toHaveTextContent('Blue Neighbourhood');
   });
 });

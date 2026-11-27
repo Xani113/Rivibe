@@ -126,16 +126,38 @@ export function scoreTrack(
     }
   }
 
-  // 4. Seed similarity (for Track Radio / Because You Listened)
+  // 4. Seed similarity (for Track Radio / Up Next similar songs)
   if (seedTrack) {
     const seedGenres = new Set(seedTrack.genres.map(normalizeText));
     const sharedGenres = track.genres.filter((g) => seedGenres.has(normalizeText(g)));
     if (sharedGenres.length > 0) {
-      score += sharedGenres.length * 1.6;
+      score += sharedGenres.length * 1.8;
       reasons.unshift(`Similar to ${seedTrack.title}`);
     }
-    if (normalizeText(track.artist) === normalizeText(seedTrack.artist)) {
-      score += 1.2;
+
+    const seedMoods = new Set(seedTrack.moods.map(normalizeText));
+    const sharedMoods = track.moods.filter((m) => m !== 'for-you' && seedMoods.has(normalizeText(m)));
+    if (sharedMoods.length > 0) {
+      score += Math.min(2.2, sharedMoods.length * 1.1);
+    }
+
+    const splitArtists = (name: string) =>
+      name
+        .split(/[,&]|\s+(?:feat|ft)\.?\s+/i)
+        .map((s) => normalizeText(s))
+        .filter(Boolean);
+    const seedArtists = new Set(splitArtists(seedTrack.artist));
+    const trackArtists = splitArtists(track.artist);
+    const sharesArtist = trackArtists.some((a) => seedArtists.has(a));
+    if (normalizeText(track.artist) === normalizeText(seedTrack.artist) || sharesArtist) {
+      score += 2.6;
+      if (!reasons.some((r) => r.includes(track.artist))) {
+        reasons.unshift(`Same vibe as ${track.artist}`);
+      }
+    }
+
+    if (sharedGenres.length === 0 && sharedMoods.length === 0 && !sharesArtist) {
+      score -= 1.2;
     }
   }
 

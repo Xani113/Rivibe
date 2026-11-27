@@ -581,60 +581,111 @@ export async function fetchDiscoveryTracks(
   return mergeAndDeduplicateTracks([SEED_TRACKS], fullOnly);
 }
 
+function extractPrimaryArtist(artist: string): string {
+  const first = artist.split(/[,&]|\s+(?:feat|ft)\.?\s+/i)[0]?.trim();
+  return first || artist.trim();
+}
+
+function mergePreserveSimilarityOrder(
+  lists: Track[][],
+  seedTrack: Track,
+  fullOnly = false,
+): Track[] {
+  const seedKey = `${normalizeText(seedTrack.title)}::${normalizeText(seedTrack.artist)}`;
+  const seedVid = seedTrack.youtubeVideoId?.trim();
+  const byKey = new Map<string, Track>();
+
+  for (const list of lists) {
+    for (const track of list) {
+      if (fullOnly && track.streamType !== 'full' && track.streamType !== 'youtube') continue;
+      if (seedVid && track.youtubeVideoId && track.youtubeVideoId === seedVid) continue;
+      const key = `${normalizeText(track.title)}::${normalizeText(track.artist)}`;
+      if (key === seedKey) continue;
+      if (!byKey.has(key)) {
+        byKey.set(key, track);
+      }
+    }
+  }
+  return Array.from(byKey.values());
+}
+
 export async function fetchPersonalizedRecommendations(
   seedTrack: Track,
   mood: MoodId,
   vault: ApiVault,
   fullOnly = false,
 ): Promise<Track[]> {
-  const backendRecs = await recommendViaBackend(seedTrack.artist, seedTrack.title, vault);
+  const primaryArtist = extractPrimaryArtist(seedTrack.artist);
+  const primaryGenre =
+    seedTrack.genres.find((g) => normalizeText(g) !== 'youtube music') ?? '';
+  const similarityQuery = primaryGenre ? `${primaryArtist} ${primaryGenre}` : primaryArtist;
+
+  const backendRecs = await recommendViaBackend(primaryArtist, seedTrack.title, vault);
 
   const [
     nativeRecs,
     lastfmQueries,
     tastediveArtists,
     ytMatches,
-    audiusMatches,
+    audiusArtistMatches,
+    audiusGenreMatches,
     jamendoMatches,
-    genreTracks,
+    itunesSimilarMatches,
   ] = await Promise.all([
     isNativeAndroidPlaybackAvailable()
       ? fetchNativeRecommendations({
           videoId: seedTrack.youtubeVideoId,
-          artist: seedTrack.artist,
+          artist: primaryArtist,
           title: seedTrack.title,
           mood,
-          limit: 16,
+          limit: 20,
         })
       : Promise.resolve<Track[]>([]),
     fetchLastFmSimilarNames(seedTrack, vault.lastfmApiKey),
-    fetchTasteDiveSimilarArtists(seedTrack.artist, vault.tastediveApiKey),
-    searchYouTubeDirect(`${seedTrack.artist} ${seedTrack.title} mix`, vault.youtubeApiKey, 6),
-    searchAudius(seedTrack.genres[0] ?? seedTrack.artist, 8),
-    searchJamendo(seedTrack.genres[0] ?? 'chill', vault.jamendoClientId, 8),
-    fullOnly ? Promise.resolve([]) : searchItunes(`${seedTrack.genres[0] ?? 'electronic'} ${seedTrack.artist}`, 10),
+    fetchTasteDiveSimilarArtists(primaryArtist, vault.tastediveApiKey),
+    searchYouTubeDirect(`${primaryArtist} ${primaryGenre || 'songs'}`, vault.youtubeApiKey, 8),
+    searchAudius(primaryArtist, 6),
+    primaryGenre ? searchAudius(primaryGenre, 6) : Promise.resolve<Track[]>([]),
+    searchJamendo(primaryGenre || 'chill', vault.jamendoClientId, 8),
+    fullOnly ? Promise.resolve([]) : searchItunes(similarityQuery, 10),
   ]);
 
-  const extraQueries = [...lastfmQueries.slice(0, 2), ...tastediveArtists.slice(0, 2)];
+  const extraQueries = [...lastfmQueries.slice(0, 3), ...tastediveArtists.slice(0, 3)];
   const extraResults = await Promise.all(
-    extraQueries.map((q) => (fullOnly ? searchAudius(q, 4) : searchItunes(q, 4))),
+    extraQueries.map(async (q) => {
+      if (isNativeAndroidPlaybackAvailable()) {
+        return searchNativeCatalog(q, 3);
+      }
+      const yt = vault.youtubeApiKey.trim()
+        ? await searchYouTubeDirect(q, vault.youtubeApiKey, 3)
+        : [];
+      if (yt.length > 0) return yt;
+      return fullOnly ? searchAudius(q, 4) : searchItunes(q, 4);
+    }),
   );
 
-  const discoveryFallback = await fetchDiscoveryTracks(mood, vault, fullOnly);
-
-  return mergeAndDeduplicateTracks(
+  // Preserve similarity ranking order: native YT Radio -> backend/Last.fm/TasteDive -> artist/genre matches
+  const prioritized = mergePreserveSimilarityOrder(
     [
       nativeRecs,
       backendRecs ?? [],
-      ytMatches,
-      audiusMatches,
-      jamendoMatches,
       ...extraResults,
-      genreTracks,
-      discoveryFallback,
+      ytMatches,
+      audiusArtistMatches,
+      jamendoMatches,
+      itunesSimilarMatches,
+      audiusGenreMatches,
     ],
+    seedTrack,
     fullOnly,
   );
+
+  if (prioritized.length >= 6) {
+    return prioritized;
+  }
+
+  const discoveryFallback = await fetchDiscoveryTracks(mood, vault, fullOnly);
+  return mergePreserveSimilarityOrder([prioritized, discoveryFallback], seedTrack, fullOnly);
 }
 
 interface RadioBrowserRaw {

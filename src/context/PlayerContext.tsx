@@ -43,7 +43,11 @@ interface PlayerContextValue {
   setInfiniteRadio: (enabled: boolean) => void;
   toggleShuffle: () => void;
   cycleRepeatMode: () => void;
-  playTrack: (track: Track, contextTracks?: Track[]) => Promise<void>;
+  playTrack: (
+    track: Track,
+    contextTracks?: Track[],
+    options?: { appendSimilar?: boolean },
+  ) => Promise<void>;
   playQueueIndex: (index: number) => Promise<void>;
   addToQueue: (track: Track) => void;
   playNext: (track: Track) => void;
@@ -191,6 +195,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       livePool.find((t) => t.streamType === 'full' || t.streamType === 'youtube') ?? livePool[0];
     if (firstFull) {
       const idx = Math.max(0, livePool.findIndex((t) => t.id === firstFull.id));
+      stateRef.current.currentTrack = firstFull;
+      stateRef.current.queue = livePool.slice(0, 18);
+      stateRef.current.queueIndex = Math.min(idx, Math.max(0, Math.min(livePool.length, 18) - 1));
       setCurrentTrack(firstFull);
       setDuration(firstFull.durationSec || 180);
       setQueue(livePool.slice(0, 18));
@@ -211,7 +218,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [getAudio]);
 
   const loadAudioSource = useCallback(
-    async (track: Track) => {
+    async (track: Track): Promise<Track> => {
       userInitiatedRef.current = true;
       const audio = getAudio();
       const nativePlugin = getNativeMusicPlugin();
@@ -245,6 +252,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         registerTracks([playableTrack]);
         setActiveYoutubeVideoId(null);
         setYoutubeSeekTarget(null);
+        stateRef.current.currentTrack = playableTrack;
         setCurrentTrack(playableTrack);
         setCurrentTime(0);
         setDuration(playableTrack.durationSec || 200);
@@ -254,7 +262,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           activeNativeRef.current = false;
           setIsPlaying(false);
           setPlaybackNotice(`No playable stream found for "${playableTrack.title}".`);
-          return;
+          return playableTrack;
         }
 
         activeNativeRef.current = true;
@@ -271,7 +279,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           });
           setIsPlaying(snap?.isPlaying ?? true);
           if (snap?.duration && snap.duration > 0) setDuration(snap.duration);
-          return;
+          return playableTrack;
         } catch (err) {
           if (playableTrack.audioUrl) {
             activeNativeRef.current = false;
@@ -280,7 +288,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             try {
               await audio.play();
               setIsPlaying(true);
-              return;
+              return playableTrack;
             } catch {
               // fall through to notice
             }
@@ -292,7 +300,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               ? err.message
               : `Could not start native stream for "${playableTrack.title}".`,
           );
-          return;
+          return playableTrack;
         }
       }
 
@@ -301,6 +309,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (playableTrack.streamType === 'youtube' && playableTrack.youtubeVideoId) {
         audio.pause();
         registerTracks([playableTrack]);
+        stateRef.current.currentTrack = playableTrack;
         setCurrentTrack(playableTrack);
         setActiveYoutubeVideoId(playableTrack.youtubeVideoId);
         setYoutubeSeekTarget(null);
@@ -308,7 +317,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setDuration(playableTrack.durationSec || 200);
         setPlaybackNotice(null);
         setIsPlaying(true);
-        return;
+        return playableTrack;
       }
 
       if (!playableTrack.audioUrl) {
@@ -338,6 +347,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
       setActiveYoutubeVideoId(null);
       setYoutubeSeekTarget(null);
+      stateRef.current.currentTrack = playableTrack;
       setCurrentTrack(playableTrack);
       setCurrentTime(0);
       setDuration(playableTrack.durationSec || 30);
@@ -347,7 +357,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setPlaybackNotice(
           `Add a YouTube key in Settings to unlock "${playableTrack.title}" in browser, or use the Android APK.`,
         );
-        return;
+        return playableTrack;
       }
 
       setPlaybackNotice(null);
@@ -360,15 +370,44 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setIsPlaying(false);
         setPlaybackNotice('Tap Play to start audio.');
       }
+      return playableTrack;
     },
     [apiVault, getAudio, registerTracks],
   );
 
+  const appendSimilarRecommendations = useCallback(
+    (seedTrack: Track) => {
+      void fetchPersonalizedRecommendations(seedTrack, activeMood, apiVault, false).then((fresh) => {
+        if (fresh.length === 0) return;
+        registerTracks(fresh);
+        setQueue((curr) => {
+          const activeId = stateRef.current.currentTrack?.id;
+          if (activeId !== seedTrack.id) return curr;
+          const existingIds = new Set(curr.map((t) => t.id));
+          const additions = fresh.filter((f) => !existingIds.has(f.id)).slice(0, 15);
+          if (additions.length === 0) return curr;
+          const updated = [...curr, ...additions];
+          stateRef.current.queue = updated;
+          return updated;
+        });
+      });
+    },
+    [activeMood, apiVault, registerTracks],
+  );
+
   const playTrack = useCallback(
-    async (track: Track, contextTracks?: Track[]) => {
+    async (
+      track: Track,
+      contextTracks?: Track[],
+      options?: { appendSimilar?: boolean },
+    ) => {
       userInitiatedRef.current = true;
-      const baseList =
-        contextTracks && contextTracks.length > 0
+      const shouldAppendSimilar =
+        Boolean(options?.appendSimilar) || !contextTracks || contextTracks.length <= 1;
+
+      const baseList = options?.appendSimilar
+        ? [track]
+        : contextTracks && contextTracks.length > 0
           ? contextTracks
           : buildTrackRadioQueue(track, catalog, tasteProfile, 16);
 
@@ -376,30 +415,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const nextQueue = idx >= 0 ? baseList : [track, ...baseList];
       const nextIdx = idx >= 0 ? idx : 0;
 
+      stateRef.current.currentTrack = track;
       stateRef.current.queue = nextQueue;
       stateRef.current.queueIndex = nextIdx;
       setQueue(nextQueue);
       setQueueIndex(nextIdx);
       recordPlay(track);
-      await loadAudioSource(track);
+      const resolvedTrack = await loadAudioSource(track);
 
-      // Background Velune-style Up Next enrichment when launched without fixed context
-      if (!contextTracks || contextTracks.length <= 1) {
-        void fetchPersonalizedRecommendations(track, activeMood, apiVault, false).then((fresh) => {
-          if (fresh.length === 0) return;
-          registerTracks(fresh);
-          setQueue((curr) => {
-            if (curr.length > 12 || curr[stateRef.current.queueIndex]?.id !== track.id) return curr;
-            const existingIds = new Set(curr.map((t) => t.id));
-            const additions = fresh.filter((f) => !existingIds.has(f.id)).slice(0, 12);
-            const updated = [...curr, ...additions];
-            stateRef.current.queue = updated;
-            return updated;
-          });
-        });
+      if (shouldAppendSimilar) {
+        appendSimilarRecommendations(resolvedTrack);
       }
     },
-    [activeMood, apiVault, catalog, loadAudioSource, recordPlay, registerTracks, tasteProfile],
+    [appendSimilarRecommendations, catalog, loadAudioSource, recordPlay, tasteProfile],
   );
 
   const playQueueIndex = useCallback(
@@ -520,6 +548,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         recordPlay(nextTarget);
         void loadAudioSource(nextTarget);
       } else {
+        stateRef.current.currentTrack = nextTarget;
         setCurrentTrack(nextTarget);
         setCurrentTime(0);
         setDuration(nextTarget.durationSec || 180);
@@ -695,9 +724,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       stateRef.current.queueIndex = finalIdx;
       setQueueIndex(finalIdx);
       recordPlay(target);
-      await loadAudioSource(target);
+      const resolvedTarget = await loadAudioSource(target);
+
+      if (radioOn && rep === 'off' && finalIdx >= workingQueue.length - 2) {
+        appendSimilarRecommendations(resolvedTarget);
+      }
     },
-    [getAudio, loadAudioSource, recordPlay, recordSkip, seekTo],
+    [appendSimilarRecommendations, getAudio, loadAudioSource, recordPlay, recordSkip, seekTo],
   );
 
   const prevTrack = useCallback(async () => {

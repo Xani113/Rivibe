@@ -93,14 +93,14 @@ export function PlayerBar({ queueOpen, onOpenSheet, onToggleQueue }: PlayerBarPr
           />
         </div>
 
-        <div className="px-3 sm:px-5 h-[68px] md:h-[78px] flex items-center justify-between gap-3">
+        <div className="px-2.5 sm:px-5 h-[66px] md:h-[78px] flex items-center justify-between gap-2 sm:gap-3">
           {/* Track Info */}
-          <div className="flex items-center gap-3 min-w-0 flex-1 md:flex-initial md:w-[30%]">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1 md:flex-initial md:w-[30%]">
             <button
               type="button"
               aria-label="Open now playing artwork view"
               onClick={() => onOpenSheet('queue')}
-              className="w-11 h-11 md:w-12 md:h-12 rounded-lg overflow-hidden bg-[#161b26] shrink-0 focus-visible:outline-2 focus-visible:outline-[#22d3a6]"
+              className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 rounded-lg overflow-hidden bg-[#161b26] shrink-0 focus-visible:outline-2 focus-visible:outline-[#22d3a6]"
             >
               <img
                 src={currentTrack?.artworkUrl || FALLBACK_ART}
@@ -115,11 +115,11 @@ export function PlayerBar({ queueOpen, onOpenSheet, onToggleQueue }: PlayerBarPr
                 aria-label="Open now playing details"
                 onClick={() => onOpenSheet('queue')}
                 data-testid="floating-player-title"
-                className="block w-full text-left text-[13.5px] font-semibold text-[#f4f5f7] truncate hover:text-[#22d3a6] transition-colors"
+                className="block w-full text-left text-[13px] sm:text-[13.5px] font-semibold text-[#f4f5f7] truncate hover:text-[#22d3a6] transition-colors"
               >
                 {currentTrack?.title ?? 'Nothing queued'}
               </button>
-              <div className="flex items-center gap-2 text-xs text-[rgba(244,245,247,0.58)] truncate">
+              <div className="flex items-center gap-1.5 text-[11.5px] sm:text-xs text-[rgba(244,245,247,0.62)] truncate">
                 <span className="truncate">{currentTrack?.artist ?? 'Pick a song to play'}</span>
                 <span className="hidden sm:inline text-[11px] text-[rgba(244,245,247,0.42)] tabular-nums shrink-0">
                   · {formatDuration(currentTime)} / {formatDuration(duration)}
@@ -143,7 +143,7 @@ export function PlayerBar({ queueOpen, onOpenSheet, onToggleQueue }: PlayerBarPr
           </div>
 
           {/* Center Transport Controls */}
-          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-0.5 sm:gap-2 shrink-0">
             <button
               type="button"
               aria-label="Toggle shuffle"
@@ -162,7 +162,7 @@ export function PlayerBar({ queueOpen, onOpenSheet, onToggleQueue }: PlayerBarPr
               type="button"
               aria-label="Previous track"
               onClick={() => void prevTrack()}
-              className="rv-interactive-btn w-9 h-9 rounded-lg hover:bg-[rgba(255,255,255,0.08)] flex items-center justify-center text-[#f4f5f7]"
+              className="rv-interactive-btn w-8 h-8 sm:w-9 sm:h-9 rounded-lg hover:bg-[rgba(255,255,255,0.08)] flex items-center justify-center text-[#f4f5f7]"
             >
               <SkipBack className="w-4 h-4 fill-current" aria-hidden="true" />
             </button>
@@ -171,7 +171,7 @@ export function PlayerBar({ queueOpen, onOpenSheet, onToggleQueue }: PlayerBarPr
               type="button"
               aria-label={isPlaying ? 'Pause' : 'Play'}
               onClick={() => void togglePlay()}
-              className="rv-interactive-btn w-10 h-10 rounded-full bg-[#22d3a6] hover:bg-[#34e5b8] text-[#042019] flex items-center justify-center shadow-lg"
+              className="rv-interactive-btn w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#22d3a6] hover:bg-[#34e5b8] text-[#042019] flex items-center justify-center shadow-lg"
             >
               {isPlaying ? (
                 <Pause className="w-4 h-4 fill-current" aria-hidden="true" />
@@ -184,7 +184,7 @@ export function PlayerBar({ queueOpen, onOpenSheet, onToggleQueue }: PlayerBarPr
               type="button"
               aria-label="Next track"
               onClick={() => void nextTrack(true)}
-              className="rv-interactive-btn w-9 h-9 rounded-lg hover:bg-[rgba(255,255,255,0.08)] flex items-center justify-center text-[#f4f5f7]"
+              className="rv-interactive-btn w-8 h-8 sm:w-9 sm:h-9 rounded-lg hover:bg-[rgba(255,255,255,0.08)] flex items-center justify-center text-[#f4f5f7]"
             >
               <SkipForward className="w-4 h-4 fill-current" aria-hidden="true" />
             </button>

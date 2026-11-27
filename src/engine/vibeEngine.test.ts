@@ -138,4 +138,33 @@ describe('VibeEngine recommendation core', () => {
     expect(radio.length).toBeGreaterThan(1);
     expect(radio.every((t, idx) => idx === 0 || t.id !== '1')).toBe(true);
   });
+
+  it('ranks featured-artist and shared-mood tracks above unrelated songs when seeding Up Next', () => {
+    const profile = makeProfile({ genreWeights: {}, artistWeights: {}, moodWeights: {} });
+    const seed = makeTrack({
+      id: 'seed-rito',
+      title: 'Ayanam',
+      artist: 'Rito Riba, Harshvardhan',
+      genres: ['Indie Acoustic'],
+      moods: ['chill', 'late-night'],
+    });
+    const collab = makeTrack({
+      id: 'rel-collab',
+      title: 'Heer',
+      artist: 'Rito Riba',
+      genres: ['Indie Acoustic'],
+      moods: ['chill'],
+    });
+    const unrelated = makeTrack({
+      id: 'rel-polka',
+      title: 'Fast Polka',
+      artist: 'Alpine Brass',
+      genres: ['Polka'],
+      moods: ['workout'],
+    });
+
+    const ranked = rankRecommendations([unrelated, collab], profile, { seedTrack: seed });
+    expect(ranked[0]?.track.id).toBe('rel-collab');
+    expect(ranked[0]!.score).toBeGreaterThan(ranked[1]!.score);
+  });
 });

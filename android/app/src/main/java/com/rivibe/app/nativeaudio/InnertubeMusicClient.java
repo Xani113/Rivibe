@@ -132,36 +132,53 @@ public final class InnertubeMusicClient {
         String cleanVid = videoId == null ? "" : videoId.replace("yt-", "").trim();
         if (!cleanVid.isEmpty()) {
             seen.add(cleanVid);
-            JSONObject nextBody = new JSONObject()
+
+            // 1. YouTube Music Radio Mix ("RDAMVM" + videoId) returns ~20+ genuinely similar songs
+            JSONObject radioBody = new JSONObject()
                     .put("context", YouTubeClientConfig.WEB_REMIX.buildContext(cachedVisitorData, null))
-                    .put("videoId", cleanVid);
+                    .put("videoId", cleanVid)
+                    .put("playlistId", "RDAMVM" + cleanVid)
+                    .put("isAudioOnly", true);
+            JSONObject radioRes = safePostInnertube("next", YouTubeClientConfig.WEB_REMIX, radioBody);
+            if (radioRes != null) {
+                appendUnique(out, InnertubeJsonParser.parseNextQueueAndRelated(radioRes, seen, targetLimit), targetLimit);
+            }
 
-            JSONObject nextRes = safePostInnertube("next", YouTubeClientConfig.WEB_REMIX, nextBody);
-            if (nextRes != null) {
-                appendUnique(out, InnertubeJsonParser.parseNextQueueAndRelated(nextRes, seen, targetLimit), targetLimit);
+            // 2. Fallback to standard next queue, automix playlist, and related browse tab
+            if (out.length() < targetLimit) {
+                JSONObject nextBody = new JSONObject()
+                        .put("context", YouTubeClientConfig.WEB_REMIX.buildContext(cachedVisitorData, null))
+                        .put("videoId", cleanVid)
+                        .put("isAudioOnly", true);
 
-                if (out.length() < targetLimit) {
-                    String automixId = InnertubeJsonParser.extractAutomixPlaylistId(nextRes);
-                    if (automixId != null) {
-                        JSONObject mixBody = new JSONObject()
-                                .put("context", YouTubeClientConfig.WEB_REMIX.buildContext(cachedVisitorData, null))
-                                .put("playlistId", automixId);
-                        JSONObject mixRes = safePostInnertube("next", YouTubeClientConfig.WEB_REMIX, mixBody);
-                        if (mixRes != null) {
-                            appendUnique(out, InnertubeJsonParser.parseNextQueueAndRelated(mixRes, seen, targetLimit), targetLimit);
+                JSONObject nextRes = safePostInnertube("next", YouTubeClientConfig.WEB_REMIX, nextBody);
+                if (nextRes != null) {
+                    appendUnique(out, InnertubeJsonParser.parseNextQueueAndRelated(nextRes, seen, targetLimit), targetLimit);
+
+                    if (out.length() < targetLimit) {
+                        String automixId = InnertubeJsonParser.extractAutomixPlaylistId(nextRes);
+                        if (automixId != null) {
+                            JSONObject mixBody = new JSONObject()
+                                    .put("context", YouTubeClientConfig.WEB_REMIX.buildContext(cachedVisitorData, null))
+                                    .put("playlistId", automixId)
+                                    .put("isAudioOnly", true);
+                            JSONObject mixRes = safePostInnertube("next", YouTubeClientConfig.WEB_REMIX, mixBody);
+                            if (mixRes != null) {
+                                appendUnique(out, InnertubeJsonParser.parseNextQueueAndRelated(mixRes, seen, targetLimit), targetLimit);
+                            }
                         }
                     }
-                }
 
-                if (out.length() < targetLimit) {
-                    String relatedBrowseId = InnertubeJsonParser.extractRelatedBrowseId(nextRes);
-                    if (relatedBrowseId != null) {
-                        JSONObject browseBody = new JSONObject()
-                                .put("context", YouTubeClientConfig.WEB_REMIX.buildContext(cachedVisitorData, null))
-                                .put("browseId", relatedBrowseId);
-                        JSONObject browseRes = safePostInnertube("browse", YouTubeClientConfig.WEB_REMIX, browseBody);
-                        if (browseRes != null) {
-                            appendUnique(out, InnertubeJsonParser.parseNextQueueAndRelated(browseRes, seen, targetLimit), targetLimit);
+                    if (out.length() < targetLimit) {
+                        String relatedBrowseId = InnertubeJsonParser.extractRelatedBrowseId(nextRes);
+                        if (relatedBrowseId != null) {
+                            JSONObject browseBody = new JSONObject()
+                                    .put("context", YouTubeClientConfig.WEB_REMIX.buildContext(cachedVisitorData, null))
+                                    .put("browseId", relatedBrowseId);
+                            JSONObject browseRes = safePostInnertube("browse", YouTubeClientConfig.WEB_REMIX, browseBody);
+                            if (browseRes != null) {
+                                appendUnique(out, InnertubeJsonParser.parseNextQueueAndRelated(browseRes, seen, targetLimit), targetLimit);
+                            }
                         }
                     }
                 }
@@ -171,7 +188,9 @@ public final class InnertubeMusicClient {
         if (out.length() < Math.min(targetLimit, 12)) {
             String fallbackQuery;
             if (artist != null && !artist.trim().isEmpty()) {
-                fallbackQuery = artist.trim() + " " + (title != null ? title.trim() : "") + " mix";
+                // Use clean primary artist name so song filter returns tracks by same/similar artists
+                String primaryArtist = artist.split("[,&]|(?i)\\s+(?:feat|ft)\\.?\\s+")[0].trim();
+                fallbackQuery = primaryArtist.isEmpty() ? artist.trim() : primaryArtist;
             } else {
                 String moodKey = mood == null ? "all" : mood.trim().toLowerCase(Locale.US);
                 fallbackQuery = MOOD_QUERY_MAP.getOrDefault(moodKey, MOOD_QUERY_MAP.get("all"));

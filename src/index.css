@@ -50,7 +50,7 @@
 }
 
 .rv-glass-bar {
-  background: rgba(13, 16, 24, 0.9);
+  background: rgba(13, 16, 24, 0.96);
   backdrop-filter: blur(24px) saturate(150%);
   -webkit-backdrop-filter: blur(24px) saturate(150%);
   border-color: var(--rv-border-subtle);
@@ -118,6 +118,14 @@
 
 /* Side-wise Mobile Landscape Adaptation */
 @media (orientation: landscape) and (max-height: 560px) {
+  .rv-app-shell {
+    flex-direction: row !important;
+  }
+
+  .rv-mobile-top-bar {
+    display: none !important;
+  }
+
   .rv-sidebar-rail {
     display: flex !important;
     width: 68px !important;

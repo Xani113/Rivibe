@@ -9,10 +9,12 @@ describe('RiVibe App UI & Queue Workflow', () => {
     localStorage.clear();
   });
 
-  it('renders Quick Picks on Home with Add to Queue actions and docked player bar', async () => {
-    render(<App />);
+  it('renders Quick Picks on Home with Add to Queue actions, mobile vertical flex shell, and docked player bar', async () => {
+    const { container } = render(<App />);
 
     expect(await screen.findByRole('heading', { name: /quick picks/i })).toBeInTheDocument();
+    const shell = container.querySelector('.rv-app-shell');
+    expect(shell).toHaveClass('flex-col', 'md:flex-row');
     expect(screen.getByRole('navigation', { name: /main sections/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^play$/i })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /add .* to queue/i }).length).toBeGreaterThan(0);

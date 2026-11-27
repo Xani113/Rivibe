@@ -216,4 +216,71 @@ describe('musicApis (public-apis#music adapters)', () => {
     expect(lyrics.syncedLines).toHaveLength(2);
     expect(lyrics.syncedLines?.[0]?.timeSec).toBeCloseTo(12.4, 1);
   });
+
+  it('prioritizes genuine similar tracks over unrelated Audius trending songs and excludes seed track', async () => {
+    const mockAdapter: NativeMusicPluginAdapter = {
+      isNativeAndroid: () => true,
+      getCapabilities: async () => ({
+        nativeAvailable: true,
+        engine: 'media3-exoplayer+innertube',
+        innertube: true,
+        media3: true,
+      }),
+      searchCatalog: async () => ({ tracks: [] }),
+      getRecommendations: async () => ({
+        tracks: [
+          {
+            id: 'sim-1',
+            title: 'Similar Acoustic Song',
+            artist: 'Rito Riba',
+            youtubeVideoId: 'sim-1',
+            durationSec: 205,
+          },
+        ],
+      }),
+      resolveStream: async () => {
+        throw new Error('unused');
+      },
+      playTrack: async () => ({
+        trackId: 'yt-sim-1',
+        isPlaying: true,
+        currentTime: 0,
+        duration: 205,
+        isBuffering: false,
+      }),
+      pause: async () => {},
+      resume: async () => {},
+      seekTo: async () => {},
+      setVolume: async () => {},
+      stop: async () => {},
+      getPlaybackState: async () => ({
+        trackId: 'yt-sim-1',
+        isPlaying: false,
+        currentTime: 0,
+        duration: 205,
+        isBuffering: false,
+      }),
+      addListener: async () => ({ remove: async () => {} }),
+    };
+    __setNativeBridgeAdapterForTests(mockAdapter);
+
+    const seed: Track = {
+      id: 'yt-ayanam',
+      title: 'Ayanam',
+      artist: 'Rito Riba, Harshvardhan',
+      album: 'Single',
+      artworkUrl: '',
+      audioUrl: null,
+      youtubeVideoId: 'ayanamVid',
+      streamType: 'youtube',
+      durationSec: 210,
+      genres: ['YouTube Music'],
+      moods: ['chill'],
+      source: 'youtube',
+    };
+
+    const recs = await fetchPersonalizedRecommendations(seed, 'all', emptyVault);
+    expect(recs[0]?.id).toBe('yt-sim-1');
+    expect(recs.some((t) => t.youtubeVideoId === 'ayanamVid')).toBe(false);
+  });
 });

@@ -212,7 +212,10 @@ export function NavShell({
       </aside>
 
       {/* Mobile Portrait Top Compact Bar */}
-      <header className="md:hidden sticky top-0 z-20 px-4 py-3 flex items-center justify-between bg-[rgba(9,11,16,0.88)] backdrop-blur-lg border-b border-[rgba(255,255,255,0.07)]">
+      <header
+        className="rv-mobile-top-bar md:hidden sticky top-0 z-20 w-full shrink-0 px-4 pb-3 flex items-center justify-between bg-[rgba(9,11,16,0.94)] backdrop-blur-lg border-b border-[rgba(255,255,255,0.07)]"
+        style={{ paddingTop: 'max(12px, var(--rv-safe-top))' }}
+      >
         <div className="flex items-center gap-2">
           <span className="w-7 h-7 rounded-lg bg-[#22d3a6] text-[#042019] flex items-center justify-center">
             <AudioLines className="w-4 h-4" aria-hidden="true" />
