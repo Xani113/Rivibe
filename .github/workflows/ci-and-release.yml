@@ -60,9 +60,13 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: android-actions/setup-android@v3
+      - name: Accept Android SDK licenses
+        run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-home-cache-cleanup: true
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
       - run: npm ci --prefer-offline --no-audit --no-fund
       - run: npx vite build
         env:
