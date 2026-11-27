@@ -16,9 +16,10 @@ import { formatDuration } from '../utils/formatTime';
 
 interface FloatingPlayerProps {
   onOpenSheet: () => void;
+  onOpenApiVault: () => void;
 }
 
-export function FloatingPlayer({ onOpenSheet }: FloatingPlayerProps) {
+export function FloatingPlayer({ onOpenSheet, onOpenApiVault }: FloatingPlayerProps) {
   const {
     currentTrack,
     currentRadioStation,
@@ -56,10 +57,28 @@ export function FloatingPlayer({ onOpenSheet }: FloatingPlayerProps) {
           <span className="truncate">{playbackNotice}</span>
           <button
             type="button"
+            onClick={onOpenApiVault}
+            className="text-[#f0c46c] font-semibold shrink-0 underline"
+          >
+            API Keys
+          </button>
+          <button
+            type="button"
             onClick={clearNotice}
-            className="text-[#f0c46c] font-semibold shrink-0"
+            className="text-[rgba(247,239,230,0.7)] shrink-0"
           >
             Dismiss
+          </button>
+        </div>
+      ) : currentTrack?.streamType === 'preview' && isPlaying && !currentRadioStation ? (
+        <div className="mb-1.5 mx-auto w-fit max-w-full px-3 py-1 rounded-full bg-[rgba(28,22,18,0.88)] border border-[rgba(255,244,230,0.18)] text-[11px] text-[rgba(247,239,230,0.82)] flex items-center gap-2">
+          <span>30s iTunes preview</span>
+          <button
+            type="button"
+            onClick={onOpenApiVault}
+            className="text-[#f0c46c] font-semibold hover:underline"
+          >
+            Add YouTube Key for Full Song
           </button>
         </div>
       ) : null}

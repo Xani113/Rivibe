@@ -15,6 +15,7 @@ import {
   fetchLyrics,
   fetchPersonalizedRecommendations,
   resolveFullSongTrack,
+  searchAudius,
   searchItunes,
 } from '../services/musicApis';
 import { buildTrackRadioQueue, rankRecommendations } from '../engine/vibeEngine';
@@ -70,6 +71,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   } = useLibrary();
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const userInitiatedRef = useRef(false);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(() => SEED_TRACKS[0] ?? null);
   const [currentRadioStation, setCurrentRadioStation] = useState<RadioStation | null>(null);
   const [activeYoutubeVideoId, setActiveYoutubeVideoId] = useState<string | null>(null);
@@ -116,8 +118,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return audioRef.current;
   }, [volume]);
 
+  // Promote default track to the first live FULL stream once catalog loads (before user plays)
+  useEffect(() => {
+    if (userInitiatedRef.current || isPlaying) return;
+    if (currentTrack && currentTrack.source !== 'seed' && currentTrack.streamType !== 'none') return;
+    const firstFull = catalog.find(
+      (t) => t.source !== 'seed' && (t.streamType === 'full' || t.streamType === 'youtube'),
+    );
+    if (firstFull) {
+      setCurrentTrack(firstFull);
+      setDuration(firstFull.durationSec || 180);
+      setQueue(catalog);
+      setQueueIndex(Math.max(0, catalog.findIndex((t) => t.id === firstFull.id)));
+    }
+  }, [catalog, currentTrack, isPlaying]);
+
   const loadAudioSource = useCallback(
     async (track: Track) => {
+      userInitiatedRef.current = true;
       const audio = getAudio();
       let playableTrack = await resolveFullSongTrack(track, apiVault);
 
@@ -136,15 +154,28 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
 
       if (!playableTrack.audioUrl) {
-        const matches = await searchItunes(`${playableTrack.artist} ${playableTrack.title}`, 3);
-        const found = matches.find((m) => Boolean(m.audioUrl));
-        if (found) {
+        // Prefer full-length Audius match first, only falling back to 30s iTunes preview
+        const audiusMatches = await searchAudius(`${playableTrack.artist} ${playableTrack.title}`, 3);
+        const fullMatch = audiusMatches.find((m) => Boolean(m.audioUrl));
+        if (fullMatch) {
           playableTrack = {
             ...playableTrack,
-            audioUrl: found.audioUrl,
-            streamType: found.streamType,
+            audioUrl: fullMatch.audioUrl,
+            streamType: 'full',
+            durationSec: fullMatch.durationSec || playableTrack.durationSec,
           };
           registerTracks([playableTrack]);
+        } else {
+          const matches = await searchItunes(`${playableTrack.artist} ${playableTrack.title}`, 3);
+          const found = matches.find((m) => Boolean(m.audioUrl));
+          if (found) {
+            playableTrack = {
+              ...playableTrack,
+              audioUrl: found.audioUrl,
+              streamType: found.streamType,
+            };
+            registerTracks([playableTrack]);
+          }
         }
       }
 
@@ -419,12 +450,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (active) recordComplete(active);
       void nextTrack(false);
     };
+    const onAudioError = () => {
+      if (stateRef.current.activeYoutubeVideoId) return;
+      setIsPlaying(false);
+      setPlaybackNotice('Audio stream unavailable on current source — try another track or add YouTube API key.');
+    };
 
     audio.addEventListener('timeupdate', onTimeUpdate);
     audio.addEventListener('loadedmetadata', onLoadedMetadata);
     audio.addEventListener('play', onPlay);
     audio.addEventListener('pause', onPause);
     audio.addEventListener('ended', onEnded);
+    audio.addEventListener('error', onAudioError);
 
     return () => {
       audio.removeEventListener('timeupdate', onTimeUpdate);
@@ -432,6 +469,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       audio.removeEventListener('play', onPlay);
       audio.removeEventListener('pause', onPause);
       audio.removeEventListener('ended', onEnded);
+      audio.removeEventListener('error', onAudioError);
     };
   }, [getAudio, nextTrack, recordComplete]);
 

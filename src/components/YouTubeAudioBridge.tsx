@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { ChevronDown, ChevronUp, PlayCircle } from 'lucide-react';
 
 interface YTPlayerInstance {
   loadVideoById: (videoId: string) => void;
@@ -42,6 +43,7 @@ declare global {
 
 interface YouTubeAudioBridgeProps {
   videoId: string | null;
+  trackTitle?: string;
   isPlaying: boolean;
   volume: number;
   isMuted: boolean;
@@ -76,6 +78,7 @@ function ensureYouTubeIframeApi(): Promise<void> {
 
 export function YouTubeAudioBridge({
   videoId,
+  trackTitle,
   isPlaying,
   volume,
   isMuted,
@@ -88,9 +91,28 @@ export function YouTubeAudioBridge({
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayerInstance | null>(null);
   const readyRef = useRef(false);
-  const callbacksRef = useRef({ onProgress, onStateSync, onEnded, onError });
-  callbacksRef.current = { onProgress, onStateSync, onEnded, onError };
+  const [minimized, setMinimized] = useState(false);
 
+  const latestRef = useRef({
+    isPlaying,
+    volume,
+    isMuted,
+    onProgress,
+    onStateSync,
+    onEnded,
+    onError,
+  });
+  latestRef.current = {
+    isPlaying,
+    volume,
+    isMuted,
+    onProgress,
+    onStateSync,
+    onEnded,
+    onError,
+  };
+
+  // Load or switch video ONLY when videoId changes (never on play/pause/volume toggles)
   useEffect(() => {
     if (!videoId) {
       if (readyRef.current && playerRef.current) {
@@ -109,34 +131,35 @@ export function YouTubeAudioBridge({
       }
 
       playerRef.current = new window.YT.Player(containerRef.current, {
-        height: '1',
-        width: '1',
+        height: '126',
+        width: '224',
         videoId,
         playerVars: {
           autoplay: 1,
-          controls: 0,
+          controls: 1,
           playsinline: 1,
           rel: 0,
+          modestbranding: 1,
           origin: window.location.origin,
         },
         events: {
           onReady: (event) => {
             readyRef.current = true;
-            event.target.setVolume(Math.round(volume * 100));
-            if (isMuted) event.target.mute();
-            if (isPlaying) event.target.playVideo();
+            event.target.setVolume(Math.round(latestRef.current.volume * 100));
+            if (latestRef.current.isMuted) event.target.mute();
+            if (latestRef.current.isPlaying) event.target.playVideo();
           },
           onStateChange: (event) => {
             if (event.data === 0) {
-              callbacksRef.current.onEnded();
+              latestRef.current.onEnded();
             } else if (event.data === 1) {
-              callbacksRef.current.onStateSync(true);
+              latestRef.current.onStateSync(true);
             } else if (event.data === 2) {
-              callbacksRef.current.onStateSync(false);
+              latestRef.current.onStateSync(false);
             }
           },
           onError: () => {
-            callbacksRef.current.onError();
+            latestRef.current.onError();
           },
         },
       });
@@ -145,7 +168,7 @@ export function YouTubeAudioBridge({
     return () => {
       cancelled = true;
     };
-  }, [videoId, isMuted, isPlaying, volume]);
+  }, [videoId]);
 
   useEffect(() => {
     if (!playerRef.current || !readyRef.current || !videoId) return;
@@ -172,18 +195,41 @@ export function YouTubeAudioBridge({
       const cur = playerRef.current.getCurrentTime?.() ?? 0;
       const dur = playerRef.current.getDuration?.() ?? 0;
       if (Number.isFinite(cur) && Number.isFinite(dur) && dur > 0) {
-        callbacksRef.current.onProgress(cur, dur);
+        latestRef.current.onProgress(cur, dur);
       }
     }, 300);
     return () => window.clearInterval(timer);
   }, [videoId, isPlaying]);
 
+  if (!videoId) return null;
+
+  // Keep player >= 200x112px visible so Chrome & mobile browsers allow full-song YouTube playback
   return (
     <div
-      aria-hidden="true"
-      className="fixed w-px h-px opacity-0 pointer-events-none overflow-hidden -left-10 -top-10"
+      aria-label="YouTube full-song player"
+      className="fixed right-3 bottom-36 md:bottom-24 z-30 rounded-2xl rv-pill-glass border border-[rgba(255,244,230,0.22)] overflow-hidden shadow-2xl"
     >
-      <div ref={containerRef} />
+      <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-[rgba(18,14,11,0.55)]">
+        <span className="flex items-center gap-1.5 text-[11px] font-medium text-[#fbf7f2] truncate max-w-[165px]">
+          <PlayCircle className="w-3.5 h-3.5 text-[#e87a64] shrink-0" aria-hidden="true" />
+          <span className="truncate">{trackTitle || 'Full Song'}</span>
+        </span>
+        <button
+          type="button"
+          aria-label={minimized ? 'Expand YouTube player' : 'Minimize YouTube player'}
+          onClick={() => setMinimized((v) => !v)}
+          className="w-6 h-6 rounded-full hover:bg-[rgba(255,248,240,0.14)] flex items-center justify-center text-[#fbf7f2]"
+        >
+          {minimized ? (
+            <ChevronUp className="w-3.5 h-3.5" aria-hidden="true" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
+          )}
+        </button>
+      </div>
+      <div className={minimized ? 'w-[224px] h-[2px] overflow-hidden' : 'w-[224px] h-[126px]'}>
+        <div ref={containerRef} />
+      </div>
     </div>
   );
 }

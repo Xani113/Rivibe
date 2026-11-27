@@ -430,7 +430,10 @@ function RiVibeWorkspace() {
       </div>
 
       {/* Bottom Floating Glass Playback Pill */}
-      <FloatingPlayer onOpenSheet={() => setNowPlayingOpen(true)} />
+      <FloatingPlayer
+        onOpenSheet={() => setNowPlayingOpen(true)}
+        onOpenApiVault={() => setApiVaultOpen(true)}
+      />
 
       {/* Mobile Portrait Bottom Thumb Dock (automatically swaps with left rail in side-wise landscape) */}
       <MobileDock
@@ -469,6 +472,7 @@ function RiVibeWorkspace() {
 
       <YouTubeAudioBridge
         videoId={activeYoutubeVideoId}
+        trackTitle={currentTrack?.title}
         isPlaying={isPlaying}
         volume={volume}
         isMuted={isMuted}
