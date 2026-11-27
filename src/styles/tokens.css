@@ -1,0 +1,47 @@
+:root {
+  /* Core Spatial Espresso & Champagne Glass Palette */
+  --rv-bg-canvas: #120e0b;
+  --rv-bg-ambient-a: rgba(154, 114, 74, 0.34);
+  --rv-bg-ambient-b: rgba(88, 72, 58, 0.36);
+  --rv-glass-window: rgba(62, 52, 43, 0.56);
+  --rv-glass-window-strong: rgba(46, 39, 32, 0.78);
+  --rv-glass-sidebar: rgba(26, 21, 17, 0.36);
+  --rv-glass-pill: rgba(54, 46, 38, 0.68);
+  --rv-glass-surface: rgba(255, 248, 240, 0.08);
+  --rv-glass-hover: rgba(255, 248, 240, 0.16);
+  --rv-glass-active: rgba(255, 248, 240, 0.22);
+
+  /* Luminous Glass Hairline Borders */
+  --rv-border-luminous: rgba(255, 244, 230, 0.22);
+  --rv-border-subtle: rgba(255, 244, 230, 0.11);
+  --rv-border-card: rgba(255, 244, 230, 0.14);
+
+  /* Typography & Ink */
+  --rv-text-primary: #fbf7f2;
+  --rv-text-secondary: rgba(247, 239, 230, 0.74);
+  --rv-text-muted: rgba(247, 239, 230, 0.54);
+
+  /* Warm Acoustic Accents */
+  --rv-accent-amber: #f0c46c;
+  --rv-accent-amber-soft: rgba(240, 196, 108, 0.2);
+  --rv-accent-coral: #e87a64;
+  --rv-accent-sage: #7cc49f;
+
+  /* Concentric Radii */
+  --rv-radius-window: 28px;
+  --rv-radius-panel: 18px;
+  --rv-radius-card: 16px;
+  --rv-radius-art: 11px;
+  --rv-radius-pill: 9999px;
+
+  /* Shadows */
+  --rv-shadow-window: 0 32px 80px rgba(0, 0, 0, 0.58), inset 0 1px 0 rgba(255, 248, 240, 0.22);
+  --rv-shadow-float: 0 16px 40px rgba(0, 0, 0, 0.48), inset 0 1px 0 rgba(255, 248, 240, 0.24);
+  --rv-shadow-card: 0 10px 26px rgba(0, 0, 0, 0.28);
+
+  /* Safe areas for mobile PWA & Capacitor */
+  --rv-safe-top: env(safe-area-inset-top, 0px);
+  --rv-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --rv-safe-left: env(safe-area-inset-left, 0px);
+  --rv-safe-right: env(safe-area-inset-right, 0px);
+}

@@ -1,0 +1,205 @@
+@import 'tailwindcss';
+@import './styles/tokens.css';
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background-color: var(--rv-bg-canvas);
+    color: var(--rv-text-primary);
+    color-scheme: dark;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background-color: var(--rv-bg-canvas);
+    color: var(--rv-text-primary);
+    overflow-x: hidden;
+  }
+
+  img {
+    outline: 1px solid rgba(255, 255, 255, 0.1);
+    outline-offset: -1px;
+  }
+
+  button,
+  a,
+  input,
+  select {
+    font: inherit;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+.text-pretty {
+  text-wrap: pretty;
+}
+
+/* Spatial Glass Surfaces */
+.rv-window-glass {
+  background: linear-gradient(
+    145deg,
+    rgba(72, 60, 49, 0.62) 0%,
+    rgba(50, 42, 35, 0.54) 55%,
+    rgba(36, 30, 25, 0.64) 100%
+  );
+  backdrop-filter: blur(36px) saturate(135%);
+  -webkit-backdrop-filter: blur(36px) saturate(135%);
+  border: 1px solid var(--rv-border-luminous);
+  box-shadow: var(--rv-shadow-window);
+}
+
+.rv-sidebar-glass {
+  background: var(--rv-glass-sidebar);
+  border-right: 1px solid var(--rv-border-subtle);
+}
+
+.rv-pill-glass {
+  background: rgba(58, 49, 41, 0.72);
+  backdrop-filter: blur(28px) saturate(140%);
+  -webkit-backdrop-filter: blur(28px) saturate(140%);
+  border: 1px solid var(--rv-border-luminous);
+  box-shadow: var(--rv-shadow-float);
+}
+
+.rv-interactive-btn {
+  transition-property: transform, background-color, border-color, color, box-shadow;
+  transition-duration: 160ms;
+  transition-timing-function: ease-out;
+}
+
+.rv-interactive-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.rv-cover-card {
+  border-radius: var(--rv-radius-card);
+  padding: 6px;
+  border: 1px solid transparent;
+  transition-property: transform, background-color, border-color, box-shadow;
+  transition-duration: 180ms;
+  transition-timing-function: ease-out;
+}
+
+.rv-cover-card:hover,
+.rv-cover-card:focus-within,
+.rv-cover-card[data-active='true'] {
+  background: rgba(255, 248, 240, 0.14);
+  border-color: rgba(255, 244, 230, 0.24);
+  box-shadow: var(--rv-shadow-card);
+}
+
+.rv-cover-card-art {
+  border-radius: var(--rv-radius-art);
+}
+
+/* Custom warm subtle scrollbar */
+.rv-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.rv-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.rv-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 244, 230, 0.18);
+  border-radius: 9999px;
+}
+
+.rv-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 244, 230, 0.3);
+}
+
+/* Equalizer live bars */
+@keyframes rv-eq-bounce {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.rv-eq-bar {
+  transform-origin: bottom;
+  animation: rv-eq-bounce 0.85s ease-in-out infinite;
+}
+
+.rv-eq-bar:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.rv-eq-bar:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* Mobile Side-Wise Landscape Adaptation */
+@media (orientation: landscape) and (max-height: 560px) {
+  .rv-spatial-stage {
+    padding: 8px 12px 68px !important;
+    gap: 10px !important;
+    max-width: 100vw !important;
+  }
+
+  .rv-desktop-sidebar {
+    display: none !important;
+  }
+
+  .rv-mobile-menu-btn {
+    display: flex !important;
+  }
+
+  .rv-window-glass {
+    min-height: calc(100dvh - 76px) !important;
+    border-radius: 20px !important;
+  }
+
+  .rv-floating-player {
+    bottom: 8px !important;
+    left: 64px !important;
+    right: 16px !important;
+    margin-inline: auto !important;
+    max-width: 640px !important;
+    width: auto !important;
+  }
+
+  .rv-mobile-bottom-dock {
+    display: none !important;
+  }
+
+  .rv-left-rail-shell {
+    display: flex !important;
+    padding: 8px 5px !important;
+    gap: 4px !important;
+    position: sticky !important;
+    top: 8px !important;
+    align-self: flex-start !important;
+  }
+
+  .rv-left-rail-shell button {
+    width: 36px !important;
+    height: 36px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
