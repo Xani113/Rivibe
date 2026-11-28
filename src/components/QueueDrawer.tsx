@@ -109,8 +109,8 @@ export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
         </div>
 
         {/* Shared Up Next Queue List */}
-        <div className="flex-1 overflow-y-auto rv-scroll p-3">
-          <QueueList />
+        <div data-queue-scroll-container className="flex-1 overflow-y-auto rv-scroll p-3">
+          <QueueList isActive={isOpen} />
         </div>
       </div>
     </div>

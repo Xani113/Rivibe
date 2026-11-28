@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { GripVertical, MoreVertical, Play } from 'lucide-react';
 import { usePlayer } from '../context/PlayerContext';
 import { useOverlay } from '../context/overlayStore';
@@ -11,11 +11,13 @@ const FALLBACK_ART = SEED_TRACKS[0]?.artworkUrl ?? '';
 interface QueueListProps {
   showSummaryHeader?: boolean;
   emptyMessage?: string;
+  isActive?: boolean;
 }
 
 export function QueueList({
   showSummaryHeader = true,
   emptyMessage = 'Tap + queue or Play on any song to build your queue.',
+  isActive = true,
 }: QueueListProps) {
   const {
     currentTrack,
@@ -30,8 +32,24 @@ export function QueueList({
   } = usePlayer();
   const { openTrackMenu } = useOverlay();
 
+  const rootRef = useRef<HTMLDivElement>(null);
   const activeTrack = queue[queueIndex] ?? currentTrack;
   const activeTint = useTrackTint(activeTrack);
+
+  // Align scroll synchronously before paint so opening Queue always starts on Playing Now + Next Queue sequence
+  useLayoutEffect(() => {
+    if (!isActive) return;
+    const root = rootRef.current;
+    if (!root) return;
+    const scrollContainer = root.closest('[data-queue-scroll-container]') as HTMLElement | null;
+    const activeRow = root.querySelector<HTMLElement>('[data-current="true"]');
+    if (scrollContainer && activeRow) {
+      const containerTop = scrollContainer.getBoundingClientRect().top;
+      const rowTop = activeRow.getBoundingClientRect().top;
+      const targetTop = scrollContainer.scrollTop + (rowTop - containerTop) - 6;
+      scrollContainer.scrollTop = Math.max(0, targetTop);
+    }
+  }, [isActive, queueIndex]);
 
   // Subtle collapse spacer when an item is removed so count updates immediately while visual space collapses smoothly
   const prevLenRef = useRef(queue.length);
@@ -126,15 +144,17 @@ export function QueueList({
 
   if (queue.length === 0) {
     return (
-      <div className="py-14 px-4 text-center space-y-1.5">
+      <div ref={rootRef} className="py-14 px-4 text-center space-y-1.5">
         <p className="text-sm font-semibold text-[#f4f5f7]">Queue is empty</p>
         <p className="text-xs text-[rgba(244,245,247,0.52)]">{emptyMessage}</p>
       </div>
     );
   }
 
+  const upcomingTotal = Math.max(0, queue.length - 1 - queueIndex);
+
   return (
-    <div className="space-y-2.5">
+    <div ref={rootRef} className="space-y-2.5">
       {showSummaryHeader ? (
         <div className="px-1.5 pb-1 flex items-center justify-between gap-2 text-xs">
           <span className="font-medium text-[rgba(244,245,247,0.72)] truncate">
@@ -157,96 +177,126 @@ export function QueueList({
       >
         {queue.map((item, idx) => {
           const isCurrent = idx === queueIndex;
+          const isFirstUpcoming = idx === queueIndex + 1 && upcomingTotal > 0;
+          const upcomingOrder = idx > queueIndex ? idx - queueIndex : null;
           const isDragging = dragIdx === idx;
+          const eagerArt = Math.abs(idx - queueIndex) <= 10;
+
           return (
             <li
               key={`${item.id}-${idx}`}
               data-current={isCurrent}
-              style={{
-                backgroundColor: isCurrent ? activeTint.cardBg : undefined,
-                borderColor: isCurrent ? activeTint.cardBorder : undefined,
-                transform: isDragging ? `translate3d(0, ${dragOffsetY}px, 0) scale(1.015)` : undefined,
-              }}
-              className={`relative flex items-center gap-2 px-2 py-2 rounded-2xl border transition-[background-color,border-color,box-shadow] duration-200 ${
-                isCurrent
-                  ? 'shadow-lg'
-                  : 'border-transparent hover:bg-[rgba(255,255,255,0.05)]'
-              } ${isDragging ? 'z-20 shadow-2xl ring-1 ring-[rgba(255,255,255,0.22)]' : ''}`}
+              className="space-y-1.5"
             >
-              {/* Drag Handle (isolated touch-action: none so list scrolling never breaks) */}
-              <button
-                type="button"
-                aria-label={`Reorder ${item.title} in queue`}
-                onPointerDown={(e) => handleGripPointerDown(idx, e)}
-                onKeyDown={(e) => {
-                  if (e.key === 'ArrowUp' && idx > 0) {
-                    e.preventDefault();
-                    moveQueueItem(idx, idx - 1);
-                  } else if (e.key === 'ArrowDown' && idx < queue.length - 1) {
-                    e.preventDefault();
-                    moveQueueItem(idx, idx + 1);
-                  }
-                }}
-                className="touch-none w-6 h-10 rounded-lg flex items-center justify-center text-[rgba(244,245,247,0.34)] hover:text-[rgba(244,245,247,0.75)] cursor-grab active:cursor-grabbing shrink-0"
-              >
-                <GripVertical className="w-4 h-4" aria-hidden="true" />
-              </button>
+              {isFirstUpcoming ? (
+                <div className="px-2 pt-2 pb-0.5 flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.14em] text-[#22d3a6]">
+                  <span>Next in Queue</span>
+                  <span className="tabular-nums text-[rgba(244,245,247,0.52)]">
+                    {upcomingTotal} upcoming
+                  </span>
+                </div>
+              ) : null}
 
-              {/* Clickable Artwork + Metadata */}
-              <button
-                type="button"
-                aria-label={`Play ${item.title} from queue`}
-                onClick={() => void playQueueIndex(idx)}
-                className="flex items-center gap-3 flex-1 min-w-0 text-left rounded-xl"
+              <div
+                style={{
+                  backgroundColor: isCurrent ? activeTint.cardBg : undefined,
+                  borderColor: isCurrent ? activeTint.cardBorder : undefined,
+                  transform: isDragging ? `translate3d(0, ${dragOffsetY}px, 0) scale(1.015)` : undefined,
+                }}
+                className={`relative flex items-center gap-2 px-2 py-2 rounded-2xl border transition-[background-color,border-color,box-shadow] duration-200 ${
+                  isCurrent
+                    ? 'shadow-lg'
+                    : 'border-transparent hover:bg-[rgba(255,255,255,0.05)]'
+                } ${isDragging ? 'z-20 shadow-2xl ring-1 ring-[rgba(255,255,255,0.22)]' : ''}`}
               >
-                <div className="relative w-11 h-11 rounded-lg overflow-hidden shrink-0 bg-[#161b26]">
-                  <img
-                    src={item.artworkUrl || FALLBACK_ART}
-                    alt=""
-                    className="w-full h-full object-cover"
-                  />
-                  {isCurrent ? (
-                    <span className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                      {isPlaying ? (
-                        <span className="inline-flex items-end gap-0.5 h-3.5" aria-hidden="true">
-                          <span className="w-0.5 h-full bg-white rounded-full rv-eq-bar" />
-                          <span className="w-0.5 h-full bg-white rounded-full rv-eq-bar" />
-                          <span className="w-0.5 h-full bg-white rounded-full rv-eq-bar" />
-                        </span>
-                      ) : (
-                        <Play className="w-4 h-4 text-white fill-current ml-0.5" aria-hidden="true" />
-                      )}
+                {/* Drag Handle + Sequence Indicator */}
+                <button
+                  type="button"
+                  aria-label={`Reorder ${item.title} in queue`}
+                  onPointerDown={(e) => handleGripPointerDown(idx, e)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowUp' && idx > 0) {
+                      e.preventDefault();
+                      moveQueueItem(idx, idx - 1);
+                    } else if (e.key === 'ArrowDown' && idx < queue.length - 1) {
+                      e.preventDefault();
+                      moveQueueItem(idx, idx + 1);
+                    }
+                  }}
+                  className="touch-none w-6 h-10 rounded-lg flex items-center justify-center text-[rgba(244,245,247,0.34)] hover:text-[rgba(244,245,247,0.75)] cursor-grab active:cursor-grabbing shrink-0"
+                >
+                  {upcomingOrder !== null ? (
+                    <span className="text-[11px] font-semibold tabular-nums text-[rgba(244,245,247,0.45)]">
+                      {upcomingOrder}
                     </span>
-                  ) : null}
-                </div>
+                  ) : (
+                    <GripVertical className="w-4 h-4" aria-hidden="true" />
+                  )}
+                </button>
 
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13.5px] font-semibold truncate text-[#f4f5f7]">
-                    {item.title}
+                {/* Clickable Artwork + Metadata */}
+                <button
+                  type="button"
+                  aria-label={`Play ${item.title} from queue`}
+                  onClick={() => void playQueueIndex(idx)}
+                  className="flex items-center gap-3 flex-1 min-w-0 text-left rounded-xl"
+                >
+                  <div className="relative w-11 h-11 rounded-lg overflow-hidden shrink-0 bg-[#161b26]">
+                    <img
+                      src={item.artworkUrl || FALLBACK_ART}
+                      alt=""
+                      loading={eagerArt ? 'eager' : 'lazy'}
+                      decoding="async"
+                      onError={(e) => {
+                        if (e.currentTarget.src !== FALLBACK_ART) {
+                          e.currentTarget.src = FALLBACK_ART;
+                        }
+                      }}
+                      className="w-full h-full object-cover"
+                    />
+                    {isCurrent ? (
+                      <span className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                        {isPlaying ? (
+                          <span className="inline-flex items-end gap-0.5 h-3.5" aria-hidden="true">
+                            <span className="w-0.5 h-full bg-white rounded-full rv-eq-bar" />
+                            <span className="w-0.5 h-full bg-white rounded-full rv-eq-bar" />
+                            <span className="w-0.5 h-full bg-white rounded-full rv-eq-bar" />
+                          </span>
+                        ) : (
+                          <Play className="w-4 h-4 text-white fill-current ml-0.5" aria-hidden="true" />
+                        )}
+                      </span>
+                    ) : null}
                   </div>
-                  <div
-                    style={isCurrent ? { color: activeTint.subtextColor } : undefined}
-                    className={`text-xs truncate mt-0.5 tabular-nums ${
-                      isCurrent ? 'font-medium' : 'text-[rgba(244,245,247,0.58)]'
-                    }`}
-                  >
-                    {item.artist} • {formatDuration(item.durationSec)}
-                  </div>
-                </div>
-              </button>
 
-              {/* Single Clean 3-Dot Action Sheet Trigger */}
-              <button
-                type="button"
-                aria-label={`More options for ${item.title}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openTrackMenu({ track: item, queueIndex: idx });
-                }}
-                className="rv-interactive-btn w-9 h-9 rounded-xl hover:bg-[rgba(255,255,255,0.1)] flex items-center justify-center text-[rgba(244,245,247,0.82)] hover:text-[#f4f5f7] shrink-0"
-              >
-                <MoreVertical className="w-4 h-4" aria-hidden="true" />
-              </button>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13.5px] font-semibold truncate text-[#f4f5f7]">
+                      {item.title}
+                    </div>
+                    <div
+                      style={isCurrent ? { color: activeTint.subtextColor } : undefined}
+                      className={`text-xs truncate mt-0.5 tabular-nums ${
+                        isCurrent ? 'font-medium' : 'text-[rgba(244,245,247,0.58)]'
+                      }`}
+                    >
+                      {item.artist} • {formatDuration(item.durationSec)}
+                    </div>
+                  </div>
+                </button>
+
+                {/* Single Clean 3-Dot Action Sheet Trigger */}
+                <button
+                  type="button"
+                  aria-label={`More options for ${item.title}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openTrackMenu({ track: item, queueIndex: idx });
+                  }}
+                  className="rv-interactive-btn w-9 h-9 rounded-xl hover:bg-[rgba(255,255,255,0.1)] flex items-center justify-center text-[rgba(244,245,247,0.82)] hover:text-[#f4f5f7] shrink-0"
+                >
+                  <MoreVertical className="w-4 h-4" aria-hidden="true" />
+                </button>
+              </div>
             </li>
           );
         })}

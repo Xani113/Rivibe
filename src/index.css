@@ -44,6 +44,11 @@
   text-wrap: pretty;
 }
 
+.rv-brand-cursive {
+  font-family: 'Dancing Script', 'Segoe Script', 'Apple Chancery', 'Brush Script MT', cursive;
+  letter-spacing: 0.015em;
+}
+
 .rv-surface-deck {
   background-color: var(--rv-bg-surface);
   border-color: var(--rv-border-subtle);

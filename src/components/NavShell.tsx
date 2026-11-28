@@ -69,10 +69,10 @@ export function NavShell({
             <img
               src={rivibeLogo}
               alt=""
-              className="w-8 h-8 rounded-lg object-cover bg-[#0C101B] shrink-0"
+              className="w-8 h-8 rounded-xl object-cover bg-black shrink-0"
             />
             <div className="rv-sidebar-label min-w-0">
-              <div className="text-[15px] font-bold tracking-tight text-[#f4f5f7] leading-none">
+              <div className="rv-brand-cursive text-[22px] font-bold text-[#f4f5f7] leading-none">
                 RiVibe
               </div>
               <div className="text-[10px] font-medium text-[rgba(244,245,247,0.48)] mt-1">
@@ -224,9 +224,11 @@ export function NavShell({
           <img
             src={rivibeLogo}
             alt=""
-            className="w-7 h-7 rounded-lg object-cover bg-[#0C101B] shrink-0"
+            className="w-7 h-7 rounded-lg object-cover bg-black shrink-0"
           />
-          <span className="text-[15px] font-bold tracking-tight text-[#f4f5f7]">RiVibe</span>
+          <span className="rv-brand-cursive text-[21px] font-bold text-[#f4f5f7] leading-none pt-0.5">
+            RiVibe
+          </span>
         </div>
       </header>
 
