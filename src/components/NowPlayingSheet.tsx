@@ -114,12 +114,15 @@ export function NowPlayingSheet({
 
   const [drawerDragY, setDrawerDragY] = useState(0);
   const [isDraggingDrawer, setIsDraggingDrawer] = useState(false);
+  const suppressDrawerClickRef = useRef(false);
   const drawerDragRef = useRef<{
     startY: number;
     startX: number;
     lastDy: number;
     lastTime: number;
     wasExpanded: boolean;
+    fromScrollTop?: boolean;
+    scrollEl?: HTMLElement | null;
     active: boolean;
   } | null>(null);
 
@@ -155,6 +158,7 @@ export function NowPlayingSheet({
       setIsDraggingDrawer(false);
       sheetDragRef.current = null;
       drawerDragRef.current = null;
+      suppressDrawerClickRef.current = false;
       if (wasOpenRef.current) {
         wasOpenRef.current = false;
         previousFocusRef.current?.focus();
@@ -183,9 +187,9 @@ export function NowPlayingSheet({
     setDrawerDragY(0);
   };
 
-  // Global window pointer safety so releasing/canceling outside the sheet never leaves drag state stuck
+  // Global window pointer tracking so fast swipes never stall when leaving small handles
   useEffect(() => {
-    if (!isDraggingSheet && !isDraggingDrawer) return;
+    if (!isOpen) return;
 
     const finalizeSheetDrag = () => {
       const drag = sheetDragRef.current;
@@ -206,20 +210,77 @@ export function NowPlayingSheet({
       drawerDragRef.current = null;
       setIsDraggingDrawer(false);
       if (drag?.active) {
+        suppressDrawerClickRef.current = true;
+        window.setTimeout(() => {
+          suppressDrawerClickRef.current = false;
+        }, 120);
         const elapsed = Math.max(1, Date.now() - drag.lastTime);
         if (drag.wasExpanded) {
           const downwardVelocity = drag.lastDy / elapsed;
-          if (drag.lastDy >= 28 && (drag.lastDy > 75 || downwardVelocity > 0.5)) {
+          if (drag.lastDy >= 28 && (drag.lastDy > 72 || downwardVelocity > 0.45)) {
             setMobileExpanded(false);
           }
         } else {
           const upwardVelocity = -drag.lastDy / elapsed;
-          if (drag.lastDy <= -28 && (drag.lastDy < -55 || upwardVelocity > 0.45)) {
+          if (drag.lastDy <= -28 && (drag.lastDy < -55 || upwardVelocity > 0.42)) {
             setMobileExpanded(true);
           }
         }
       }
       setDrawerDragY(0);
+    };
+
+    const onWindowPointerMove = (e: PointerEvent) => {
+      const sDrag = sheetDragRef.current;
+      if (sDrag) {
+        const dy = e.clientY - sDrag.startY;
+        const dx = Math.abs(e.clientX - sDrag.startX);
+        if (!sDrag.active) {
+          if (dy > 12 && dy > dx * 1.2) {
+            sDrag.active = true;
+            setIsDraggingSheet(true);
+          } else if (dx > 18 || dy < -12) {
+            resetSheetDrag();
+          }
+        }
+        if (sDrag.active) {
+          const clampedDy = Math.max(0, dy);
+          sDrag.lastDy = clampedDy;
+          setSheetDragY(clampedDy);
+        }
+      }
+
+      const dDrag = drawerDragRef.current;
+      if (dDrag) {
+        const dy = e.clientY - dDrag.startY;
+        const dx = Math.abs(e.clientX - dDrag.startX);
+        if (!dDrag.active) {
+          if (dDrag.fromScrollTop && ((dDrag.scrollEl?.scrollTop ?? 0) > 2 || dy < -4)) {
+            resetDrawerDrag();
+            return;
+          }
+          const correctDirection = dDrag.wasExpanded ? dy > 10 : dy < -10;
+          if (correctDirection && Math.abs(dy) > dx * 1.15) {
+            dDrag.active = true;
+            setIsDraggingDrawer(true);
+          } else if (
+            dx > 18 ||
+            (dDrag.wasExpanded && dy < -12) ||
+            (!dDrag.wasExpanded && dy > 12)
+          ) {
+            resetDrawerDrag();
+            return;
+          } else {
+            return;
+          }
+        }
+
+        const clampedDy = dDrag.wasExpanded
+          ? Math.max(0, Math.min(480, dy))
+          : Math.min(0, Math.max(-240, dy));
+        dDrag.lastDy = clampedDy;
+        setDrawerDragY(clampedDy);
+      }
     };
 
     const onWindowPointerUp = () => {
@@ -232,14 +293,16 @@ export function NowPlayingSheet({
       if (drawerDragRef.current) resetDrawerDrag();
     };
 
+    window.addEventListener('pointermove', onWindowPointerMove, { passive: true });
     window.addEventListener('pointerup', onWindowPointerUp);
     window.addEventListener('pointercancel', onWindowPointerCancel);
     return () => {
+      window.removeEventListener('pointermove', onWindowPointerMove);
       window.removeEventListener('pointerup', onWindowPointerUp);
       window.removeEventListener('pointercancel', onWindowPointerCancel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDraggingDrawer, isDraggingSheet, onClose]);
+  }, [isOpen, onClose]);
 
   const activeLyricIndex = useMemo(() => {
     const synced = lyrics?.syncedLines;
@@ -299,47 +362,11 @@ export function NowPlayingSheet({
     };
   };
 
-  const handleHeroPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const drag = sheetDragRef.current;
-    if (!drag) return;
-    const dy = e.clientY - drag.startY;
-    const dx = Math.abs(e.clientX - drag.startX);
-    if (!drag.active) {
-      if (dy > 12 && dy > dx * 1.2) {
-        drag.active = true;
-        setIsDraggingSheet(true);
-      } else if (dx > 18 || dy < -12) {
-        sheetDragRef.current = null;
-        return;
-      }
-    }
-    if (drag.active) {
-      const clampedDy = Math.max(0, dy);
-      drag.lastDy = clampedDy;
-      setSheetDragY(clampedDy);
-    }
-  };
-
-  const handleHeroPointerEnd = () => {
-    const drag = sheetDragRef.current;
-    sheetDragRef.current = null;
-    setIsDraggingSheet(false);
-    if (drag?.active) {
-      const elapsed = Math.max(1, Date.now() - drag.lastTime);
-      const downwardVelocity = drag.lastDy / elapsed;
-      if (drag.lastDy >= 32 && (drag.lastDy > 110 || downwardVelocity > 0.55)) {
-        setSheetDragY(0);
-        onClose();
-        return;
-      }
-    }
-    setSheetDragY(0);
-  };
-
-  // Interactive drag handle gestures on Up Next / Lyrics bottom sheet (direction + meaningful distance guarded)
+  // Start tracking vertical drawer drag (window listeners follow pointer across entire screen)
   const handleDrawerPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.stopPropagation();
-    if ((e.target as HTMLElement).closest('button')) return;
+    const targetEl = e.target as HTMLElement;
+    if (!mobileExpanded && targetEl.closest('button')) return;
     drawerDragRef.current = {
       startY: e.clientY,
       startX: e.clientX,
@@ -350,51 +377,23 @@ export function NowPlayingSheet({
     };
   };
 
-  const handleDrawerPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const drag = drawerDragRef.current;
-    if (!drag) return;
-    const dy = e.clientY - drag.startY;
-    const dx = Math.abs(e.clientX - drag.startX);
-
-    if (!drag.active) {
-      const correctDirection = drag.wasExpanded ? dy > 10 : dy < -10;
-      if (correctDirection && Math.abs(dy) > dx * 1.15) {
-        drag.active = true;
-        setIsDraggingDrawer(true);
-      } else if (dx > 18 || (drag.wasExpanded && dy < -12) || (!drag.wasExpanded && dy > 12)) {
-        resetDrawerDrag();
-        return;
-      } else {
-        return;
-      }
-    }
-
-    const clampedDy = drag.wasExpanded
-      ? Math.max(0, Math.min(360, dy))
-      : Math.min(0, Math.max(-240, dy));
-    drag.lastDy = clampedDy;
-    setDrawerDragY(clampedDy);
-  };
-
-  const handleDrawerPointerEnd = () => {
-    const drag = drawerDragRef.current;
-    drawerDragRef.current = null;
-    setIsDraggingDrawer(false);
-    if (drag?.active) {
-      const elapsed = Math.max(1, Date.now() - drag.lastTime);
-      if (drag.wasExpanded) {
-        const downwardVelocity = drag.lastDy / elapsed;
-        if (drag.lastDy >= 28 && (drag.lastDy > 75 || downwardVelocity > 0.5)) {
-          setMobileExpanded(false);
-        }
-      } else {
-        const upwardVelocity = -drag.lastDy / elapsed;
-        if (drag.lastDy <= -28 && (drag.lastDy < -55 || upwardVelocity > 0.45)) {
-          setMobileExpanded(true);
-        }
-      }
-    }
-    setDrawerDragY(0);
+  // Allow smooth pull-down-to-close when Queue / Lyrics scroll container is at scrollTop === 0
+  const handleScrollAreaPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!mobileExpanded) return;
+    if (e.currentTarget.scrollTop > 2) return;
+    const targetEl = e.target as HTMLElement;
+    if (targetEl.closest('button[data-no-drag]')) return;
+    e.stopPropagation();
+    drawerDragRef.current = {
+      startY: e.clientY,
+      startX: e.clientX,
+      lastDy: 0,
+      lastTime: Date.now(),
+      wasExpanded: true,
+      fromScrollTop: true,
+      scrollEl: e.currentTarget,
+      active: false,
+    };
   };
 
   const sheetTransform = !isVisible
@@ -418,8 +417,6 @@ export function NowPlayingSheet({
       aria-label="Now playing studio"
       onKeyDown={handleDialogKeyDown}
       onPointerDown={handleHeroPointerDown}
-      onPointerMove={handleHeroPointerMove}
-      onPointerUp={handleHeroPointerEnd}
       onPointerCancel={resetSheetDrag}
       style={{
         transform: sheetTransform,
@@ -427,11 +424,11 @@ export function NowPlayingSheet({
       }}
       className={`fixed inset-0 z-50 bg-[#090b10] flex flex-col overflow-hidden will-change-transform ${
         isDraggingSheet
-          ? ''
-          : 'transition-[transform,opacity] duration-[360ms] ease-[cubic-bezier(0.32,0.72,0,1)]'
+          ? 'transition-none'
+          : 'transition-[transform,opacity] duration-[360ms] ease-[cubic-bezier(0.22,1,0.36,1)]'
       } ${!isVisible ? 'pointer-events-none' : ''}`}
     >
-      {/* Mobile Full-Bleed Edge-to-Edge Artwork Hero + Album-Synced Lower Atmosphere */}
+      {/* Mobile Full-Bleed Edge-to-Edge Artwork Hero + Seamless Album-Synced Lower Background */}
       {artSrc ? (
         <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden md:hidden">
           <ArtworkImage
@@ -451,15 +448,9 @@ export function NowPlayingSheet({
           <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-[#090b10]/70 to-transparent" />
           <div
             style={{
-              background: `linear-gradient(to bottom, transparent 18dvh, ${activeTint.deepSurface} 54dvh, ${activeTint.deepSurface} 100%)`,
+              background: `linear-gradient(to bottom, transparent 14dvh, ${activeTint.deepSurface} 54dvh, ${activeTint.deepSurface} 100%)`,
             }}
             className="absolute inset-0 transition-[background] duration-300"
-          />
-          <div
-            style={{
-              background: `radial-gradient(ellipse at 50% 92%, ${activeTint.glowRgba} 0%, transparent 68%)`,
-            }}
-            className="absolute inset-x-0 bottom-0 h-[48dvh] opacity-40 transition-[background] duration-300"
           />
         </div>
       ) : null}
@@ -766,10 +757,19 @@ export function NowPlayingSheet({
               aria-label="Toggle shuffle"
               aria-pressed={shuffle}
               onClick={toggleShuffle}
-              className={`rv-interactive-btn w-11 h-11 rounded-2xl flex items-center justify-center ${
+              style={
                 shuffle
-                  ? 'bg-[rgba(124,92,255,0.22)] text-[#c4b5fd]'
-                  : 'bg-[rgba(255,255,255,0.06)] text-[rgba(244,245,247,0.75)] hover:text-[#f4f5f7]'
+                  ? {
+                      backgroundColor: activeTint.cardBg,
+                      borderColor: activeTint.cardBorder,
+                      color: activeTint.subtextColor,
+                    }
+                  : undefined
+              }
+              className={`rv-interactive-btn w-11 h-11 rounded-2xl border flex items-center justify-center ${
+                shuffle
+                  ? 'shadow-sm'
+                  : 'border-transparent bg-[rgba(255,255,255,0.06)] text-[rgba(244,245,247,0.75)] hover:text-[#f4f5f7]'
               }`}
             >
               <Shuffle className="w-4 h-4" aria-hidden="true" />
@@ -810,10 +810,19 @@ export function NowPlayingSheet({
               type="button"
               aria-label={`Repeat mode: ${repeatMode}`}
               onClick={cycleRepeatMode}
-              className={`rv-interactive-btn w-11 h-11 rounded-2xl flex items-center justify-center ${
+              style={
                 repeatMode !== 'off'
-                  ? 'bg-[rgba(124,92,255,0.22)] text-[#c4b5fd]'
-                  : 'bg-[rgba(255,255,255,0.06)] text-[rgba(244,245,247,0.75)] hover:text-[#f4f5f7]'
+                  ? {
+                      backgroundColor: activeTint.cardBg,
+                      borderColor: activeTint.cardBorder,
+                      color: activeTint.subtextColor,
+                    }
+                  : undefined
+              }
+              className={`rv-interactive-btn w-11 h-11 rounded-2xl border flex items-center justify-center ${
+                repeatMode !== 'off'
+                  ? 'shadow-sm'
+                  : 'border-transparent bg-[rgba(255,255,255,0.06)] text-[rgba(244,245,247,0.75)] hover:text-[#f4f5f7]'
               }`}
             >
               {repeatMode === 'one' ? (
@@ -830,8 +839,6 @@ export function NowPlayingSheet({
           data-no-sheet-drag
           data-testid="mobile-peek-bar"
           onPointerDown={handleDrawerPointerDown}
-          onPointerMove={handleDrawerPointerMove}
-          onPointerUp={handleDrawerPointerEnd}
           onPointerCancel={resetDrawerDrag}
           style={{
             paddingBottom: 'max(14px, var(--rv-safe-bottom))',
@@ -840,7 +847,11 @@ export function NowPlayingSheet({
               ? `translate3d(0, ${drawerDragY * 0.35}px, 0)`
               : undefined,
           }}
-          className={`md:hidden touch-none shrink-0 relative px-7 pt-2 flex items-center justify-between transition-[background-color,opacity] duration-300 ${
+          className={`md:hidden touch-none shrink-0 relative px-7 pt-2 flex items-center justify-between ${
+            isDraggingDrawer
+              ? 'transition-none'
+              : 'transition-[transform,background-color,opacity] duration-[280ms] ease-[cubic-bezier(0.22,1,0.36,1)]'
+          } ${
             mobileExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'
           }`}
         >
@@ -863,9 +874,14 @@ export function NowPlayingSheet({
               aria-label="Sleep timer"
               aria-expanded={showBottomSleepMenu}
               onClick={() => setShowBottomSleepMenu((v) => !v)}
+              style={
+                sleepTimerMode !== 'off'
+                  ? { color: activeTint.subtextColor }
+                  : undefined
+              }
               className={`rv-interactive-btn min-h-[44px] px-3 rounded-xl inline-flex items-center justify-center gap-1.5 transition-colors ${
                 sleepTimerMode !== 'off'
-                  ? 'text-[#a78bfa]'
+                  ? ''
                   : 'text-[rgba(244,245,247,0.84)] hover:text-white'
               }`}
             >
@@ -888,9 +904,13 @@ export function NowPlayingSheet({
                 <div
                   role="group"
                   aria-label="Sleep timer options"
-                  className="rv-tab-enter absolute bottom-12 left-1/2 -translate-x-1/2 z-50 w-52 p-2 rounded-2xl rv-glass-overlay border shadow-2xl space-y-1.5"
+                  style={{
+                    backgroundColor: activeTint.drawerSurface,
+                    borderColor: activeTint.cardBorder,
+                  }}
+                  className="rv-pop-in absolute bottom-12 left-1/2 -translate-x-1/2 z-50 w-52 p-2 rounded-2xl border backdrop-blur-xl shadow-[0_18px_42px_rgba(0,0,0,0.62)] space-y-1.5"
                 >
-                  <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-[rgba(244,245,247,0.58)] text-center">
+                  <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-[rgba(244,245,247,0.62)] text-center">
                     Sleep Timer
                   </div>
                   <div className="grid grid-cols-4 gap-1">
@@ -905,10 +925,19 @@ export function NowPlayingSheet({
                             setSleepTimer(mode);
                             setShowBottomSleepMenu(false);
                           }}
-                          className={`py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${
+                          style={
                             selected
-                              ? 'bg-[#7c5cff] text-white'
-                              : 'bg-[rgba(255,255,255,0.08)] text-[rgba(244,245,247,0.78)] hover:text-white'
+                              ? {
+                                  backgroundColor: activeTint.cardBg,
+                                  borderColor: activeTint.cardBorder,
+                                  color: activeTint.subtextColor,
+                                }
+                              : undefined
+                          }
+                          className={`py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${
+                            selected
+                              ? 'shadow-sm'
+                              : 'border-transparent bg-[rgba(255,255,255,0.08)] text-[rgba(244,245,247,0.78)] hover:text-white'
                           }`}
                         >
                           {label}
@@ -961,94 +990,106 @@ export function NowPlayingSheet({
                 ? `translate3d(0, ${drawerDragY}px, 0)`
                 : undefined,
           }}
-          className={`flex flex-col border overflow-hidden will-change-transform transition-[transform,background-color,border-color] max-md:fixed max-md:inset-x-0 max-md:bottom-0 max-md:top-[max(56px,var(--rv-safe-top))] max-md:z-40 max-md:rounded-t-[28px] max-md:border-t max-md:backdrop-blur-2xl max-md:shadow-[0_-16px_44px_rgba(0,0,0,0.65)] md:static md:h-[min(520px,calc(100dvh-104px))] md:rounded-2xl md:backdrop-blur-2xl ${
+          className={`flex flex-col border overflow-hidden will-change-transform max-md:fixed max-md:inset-x-0 max-md:bottom-0 max-md:top-[max(56px,var(--rv-safe-top))] max-md:z-40 max-md:rounded-t-[28px] max-md:border-t max-md:shadow-[0_-16px_44px_rgba(0,0,0,0.65)] md:static md:h-[min(520px,calc(100dvh-104px))] md:rounded-2xl md:backdrop-blur-2xl ${
             isDraggingDrawer
-              ? 'duration-300'
-              : 'duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)]'
+              ? 'transition-none'
+              : 'transition-[transform,opacity,background-color,border-color] duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)]'
           } ${
             mobileExpanded
-              ? 'max-md:translate-y-0'
-              : 'max-md:translate-y-full max-md:pointer-events-none'
+              ? 'max-md:translate-y-0 max-md:opacity-100'
+              : 'max-md:translate-y-full max-md:opacity-0 max-md:pointer-events-none'
           }`}
         >
-          {/* Draggable Mobile Grab Handle */}
+          {/* Full Top Draggable Zone (Grab Handle + Tab Bar — slide down from anywhere here to close) */}
           <div
             onPointerDown={handleDrawerPointerDown}
-            onPointerMove={handleDrawerPointerMove}
-            onPointerUp={handleDrawerPointerEnd}
             onPointerCancel={resetDrawerDrag}
-            className="md:hidden touch-none pt-2.5 pb-1 flex justify-center cursor-grab active:cursor-grabbing"
+            onClickCapture={(e) => {
+              if (suppressDrawerClickRef.current) {
+                e.stopPropagation();
+                e.preventDefault();
+                suppressDrawerClickRef.current = false;
+              }
+            }}
+            className="md:cursor-default touch-none select-none cursor-grab active:cursor-grabbing"
           >
-            {mobileExpanded ? (
-              <button
-                type="button"
-                aria-label="Collapse queue and lyrics panel"
-                onClick={() => setMobileExpanded(false)}
-                className="px-8 py-1 rounded-full flex items-center justify-center group"
-              >
-                <span className="w-9 h-1 rounded-full bg-[rgba(255,255,255,0.3)] group-hover:bg-[rgba(255,255,255,0.5)]" />
-              </button>
-            ) : (
-              <span className="w-9 h-1 my-1 rounded-full bg-[rgba(255,255,255,0.28)]" />
-            )}
-          </div>
-
-          {/* Single Accessible Tab Header */}
-          <div className="px-4 py-2 border-b border-[rgba(255,255,255,0.08)] flex items-center justify-between gap-2">
-            <div className="flex gap-1.5" role="tablist">
-              {(
-                [
-                  { id: 'queue', label: `Up Next (${queue.length})`, Icon: ListMusic },
-                  { id: 'lyrics', label: 'Lyrics', Icon: Mic2 },
-                ] as const
-              ).map(({ id, label, Icon }) => (
-                <button
-                  key={id}
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === id}
-                  onClick={() => {
-                    setTab(id);
-                    setMobileExpanded(true);
-                  }}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-colors duration-150 ${
-                    tab === id
-                      ? 'bg-[#7c5cff] text-white'
-                      : 'text-[rgba(244,245,247,0.68)] hover:text-[#f4f5f7] hover:bg-[rgba(255,255,255,0.06)]'
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" aria-hidden="true" />
-                  <span>{label}</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              {tab === 'queue' && queue.length > 1 ? (
+            <div className="md:hidden pt-2.5 pb-1 flex justify-center">
+              {mobileExpanded ? (
                 <button
                   type="button"
-                  onClick={clearUpcomingQueue}
-                  className="px-2.5 py-1 rounded-xl bg-[rgba(255,255,255,0.06)] hover:text-[#f87171] text-[11px] font-medium text-[rgba(244,245,247,0.68)] inline-flex items-center gap-1"
+                  aria-label="Collapse queue and lyrics panel"
+                  onClick={() => setMobileExpanded(false)}
+                  className="px-8 py-1 rounded-full flex items-center justify-center group"
                 >
-                  <Trash2 className="w-3 h-3" aria-hidden="true" />
-                  Clear
+                  <span className="w-9 h-1 rounded-full bg-[rgba(255,255,255,0.32)] group-hover:bg-[rgba(255,255,255,0.55)]" />
                 </button>
-              ) : null}
+              ) : (
+                <span className="w-9 h-1 my-1 rounded-full bg-[rgba(255,255,255,0.28)]" />
+              )}
+            </div>
 
-              <button
-                type="button"
-                aria-label="Minimize panel"
-                onClick={() => setMobileExpanded(false)}
-                className="md:hidden w-8 h-8 rounded-xl bg-[rgba(255,255,255,0.06)] flex items-center justify-center text-[rgba(244,245,247,0.75)]"
-              >
-                <ChevronDown className="w-4 h-4" aria-hidden="true" />
-              </button>
+            {/* Single Accessible Tab Header */}
+            <div className="px-4 py-2 border-b border-[rgba(255,255,255,0.08)] flex items-center justify-between gap-2">
+              <div className="flex gap-1.5" role="tablist">
+                {(
+                  [
+                    { id: 'queue', label: `Up Next (${queue.length})`, Icon: ListMusic },
+                    { id: 'lyrics', label: 'Lyrics', Icon: Mic2 },
+                  ] as const
+                ).map(({ id, label, Icon }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === id}
+                    onClick={() => {
+                      setTab(id);
+                      setMobileExpanded(true);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-colors duration-200 ${
+                      tab === id
+                        ? 'bg-[#7c5cff] text-white'
+                        : 'text-[rgba(244,245,247,0.68)] hover:text-[#f4f5f7] hover:bg-[rgba(255,255,255,0.06)]'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                {tab === 'queue' && queue.length > 1 ? (
+                  <button
+                    type="button"
+                    onClick={clearUpcomingQueue}
+                    className="px-2.5 py-1 rounded-xl bg-[rgba(255,255,255,0.06)] hover:text-[#f87171] text-[11px] font-medium text-[rgba(244,245,247,0.68)] inline-flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3 h-3" aria-hidden="true" />
+                    Clear
+                  </button>
+                ) : null}
+
+                <button
+                  type="button"
+                  aria-label="Minimize panel"
+                  onClick={() => setMobileExpanded(false)}
+                  className="md:hidden w-8 h-8 rounded-xl bg-[rgba(255,255,255,0.06)] flex items-center justify-center text-[rgba(244,245,247,0.75)]"
+                >
+                  <ChevronDown className="w-4 h-4" aria-hidden="true" />
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Persistent Queue Container + Studio Fade Lyrics Body */}
-          <div data-queue-scroll-container className="flex-1 overflow-y-auto rv-scroll p-3">
-            <div className={tab === 'queue' ? 'block' : 'hidden'}>
+          {/* Persistent Queue Container + Studio Fade Lyrics Body (supports pull-down at scrollTop=0) */}
+          <div
+            data-queue-scroll-container
+            onPointerDown={handleScrollAreaPointerDown}
+            onPointerCancel={resetDrawerDrag}
+            className="flex-1 overflow-y-auto overscroll-y-contain rv-scroll p-3"
+          >
+            <div className={tab === 'queue' ? 'block rv-tab-enter' : 'hidden'}>
               <QueueList isActive={isVisible && tab === 'queue' && mobileExpanded} />
             </div>
 

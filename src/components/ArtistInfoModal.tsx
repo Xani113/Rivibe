@@ -90,7 +90,7 @@ export function ArtistInfoModal() {
           closeArtistInfo();
         }
       }}
-      className={`fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4 transition-opacity duration-[300ms] ease-out ${
+      className={`fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4 transition-opacity duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
         isVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
       }`}
     >

@@ -266,14 +266,36 @@ describe('NowPlayingSheet & PlayerBar Mobile UX Regressions', () => {
     expect(sleepBtn).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^lyrics$/i })).toBeInTheDocument();
 
-    // Tapping Sleep timer opens inline quick options and activates timer
+    // Tapping Sleep timer opens album-synced quick options and activates timer
     await user.click(sleepBtn);
+    const sleepGroup = screen.getByRole('group', { name: /sleep timer options/i });
+    expect(sleepGroup.style.backgroundColor).toContain('rgba(');
+    const offPill = screen.getByRole('button', { name: /^off$/i });
+    expect(offPill.style.backgroundColor).toContain('rgba(');
     await user.click(screen.getByRole('button', { name: /^15m$/i }));
     expect(sleepBtn).toHaveTextContent('15m');
 
     // Opening Queue renders clean unnumbered rows without left grip buttons
     await user.click(screen.getByRole('button', { name: /^queue$/i }));
+    expect(screen.getByTestId('sheet-expanded-state')).toHaveTextContent('true');
     expect(screen.queryByRole('button', { name: /reorder .* in queue/i })).not.toBeInTheDocument();
+
+    // Sliding down from the Queue tab header collapses smoothly even outside the tiny top grabber pill
+    const tabHeader = screen.getByRole('tab', { name: /up next/i });
+    firePointer(tabHeader, 'pointerdown', 180, 140);
+    firePointer(tabHeader, 'pointermove', 180, 240);
+    firePointer(tabHeader, 'pointerup', 180, 240);
+    expect(screen.getByTestId('sheet-expanded-state')).toHaveTextContent('false');
+
+    // Re-open and test pull-down from top of scroll list (scrollTop = 0)
+    await user.click(screen.getByRole('button', { name: /^queue$/i }));
+    expect(screen.getByTestId('sheet-expanded-state')).toHaveTextContent('true');
+    const panel = screen.getByLabelText(/up next and lyrics panel/i);
+    const scrollContainer = panel.querySelector('[data-queue-scroll-container]')!;
+    firePointer(scrollContainer, 'pointerdown', 180, 220);
+    firePointer(scrollContainer, 'pointermove', 180, 320);
+    firePointer(scrollContainer, 'pointerup', 180, 320);
+    expect(screen.getByTestId('sheet-expanded-state')).toHaveTextContent('false');
     expect(dialog).toBeInTheDocument();
   });
 });

@@ -96,7 +96,7 @@ export function TrackActionSheet() {
       <div
         role="menu"
         aria-label={`Track actions for ${track.title}`}
-        className={`relative z-10 w-full sm:max-w-sm rounded-t-[26px] sm:rounded-2xl bg-[#0e121b] border-t sm:border border-[rgba(255,255,255,0.12)] shadow-2xl overflow-hidden will-change-transform transition-transform duration-[280ms] ease-[cubic-bezier(0.32,0.72,0,1)] ${
+        className={`relative z-10 w-full sm:max-w-sm rounded-t-[26px] sm:rounded-2xl bg-[#0e121b] border-t sm:border border-[rgba(255,255,255,0.12)] shadow-2xl overflow-hidden will-change-transform transition-transform duration-[300ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
           isVisible ? 'translate-y-0 sm:scale-100' : 'translate-y-full sm:translate-y-3 sm:scale-95'
         }`}
         style={{ paddingBottom: 'max(10px, var(--rv-safe-bottom))' }}
