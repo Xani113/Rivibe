@@ -185,9 +185,9 @@ describe('RiVibe App UI, Navigation & Queue Workflow', () => {
     // Reopening after rapid cycles starts collapsed cleanly (not stuck expanded on Lyrics)
     await user.click(screen.getByRole('button', { name: /open now playing details/i }));
     const reopened = await screen.findByRole('dialog', { name: /now playing studio/i });
-    expect(
-      within(reopened).getByRole('button', { name: /expand queue and lyrics panel/i }),
-    ).toBeInTheDocument();
+    expect(within(reopened).getByRole('button', { name: /^queue$/i })).toBeInTheDocument();
+    expect(within(reopened).getByRole('button', { name: /sleep timer/i })).toBeInTheDocument();
+    expect(within(reopened).getByRole('button', { name: /^lyrics$/i })).toBeInTheDocument();
     await user.click(within(reopened).getByRole('button', { name: /close now playing/i }));
   });
 

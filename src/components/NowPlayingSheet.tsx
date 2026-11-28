@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
-  ChevronUp,
   Heart,
   ListMusic,
   Mic2,
@@ -58,7 +57,6 @@ export function NowPlayingSheet({
   const {
     currentTrack,
     queue,
-    queueIndex,
     isPlaying,
     currentTime,
     duration,
@@ -87,6 +85,7 @@ export function NowPlayingSheet({
   const [tab, setTab] = useState<'queue' | 'lyrics'>(initialTab);
   const [internalExpanded, setInternalExpanded] = useState(initialTab === 'lyrics');
   const [internalPlaylistMenu, setInternalPlaylistMenu] = useState(false);
+  const [showBottomSleepMenu, setShowBottomSleepMenu] = useState(false);
 
   const mobileExpanded = isExpanded ?? internalExpanded;
   const setMobileExpanded = (next: boolean | ((prev: boolean) => boolean)) => {
@@ -144,10 +143,12 @@ export function NowPlayingSheet({
       onExpandedChange?.(startExpanded);
       setSheetDragY(0);
       setDrawerDragY(0);
+      setShowBottomSleepMenu(false);
     } else {
       // Reset drawer & menu cleanly so rapid reopen never reveals a half-open stuck state
       setInternalExpanded(false);
       setInternalPlaylistMenu(false);
+      setShowBottomSleepMenu(false);
       setSheetDragY(0);
       setDrawerDragY(0);
       setIsDraggingSheet(false);
@@ -260,28 +261,6 @@ export function NowPlayingSheet({
     }
   }, [activeLyricIndex, isOpen, tab, mobileExpanded]);
 
-  const lyricPreview = useMemo(() => {
-    const synced = lyrics?.syncedLines;
-    if (synced && synced.length > 0) {
-      const idx = Math.max(0, activeLyricIndex);
-      return {
-        primary: synced[idx]?.text ?? '',
-        secondary: synced[idx + 1]?.text ?? '',
-      };
-    }
-    const plainLines = (lyrics?.lyrics ?? '')
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean);
-    if (plainLines.length > 0 && !plainLines[0]!.startsWith('Lyrics not found')) {
-      return {
-        primary: plainLines[0] ?? '',
-        secondary: plainLines[1] ?? '',
-      };
-    }
-    return null;
-  }, [lyrics, activeLyricIndex]);
-
   const activeTrack = currentTrack ?? lastTrackRef.current;
   const activeTint = useTrackTint(activeTrack);
   if (!shouldRender || !activeTrack) return null;
@@ -290,8 +269,6 @@ export function NowPlayingSheet({
   const canSeek = Number.isFinite(duration) && duration > 0;
   const clampedTime = canSeek ? Math.min(Math.max(0, currentTime), duration) : 0;
   const progress = canSeek ? Math.min(100, Math.max(0, (clampedTime / duration) * 100)) : 0;
-  const upcomingTrack =
-    queueIndex >= 0 && queueIndex + 1 < queue.length ? queue[queueIndex + 1] : null;
   const artSrc = activeTrack.artworkUrl || FALLBACK_ART;
 
   const handleDialogKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -299,6 +276,8 @@ export function NowPlayingSheet({
     e.stopPropagation();
     if (showPlaylistMenu) {
       setShowPlaylistMenu(false);
+    } else if (showBottomSleepMenu) {
+      setShowBottomSleepMenu(false);
     } else if (mobileExpanded) {
       setMobileExpanded(false);
     } else {
@@ -846,7 +825,7 @@ export function NowPlayingSheet({
           </div>
         </div>
 
-        {/* Mobile Collapsed Bottom Peek Bar (album-cover synced surface & Up Next / Lyrics preview) */}
+        {/* Mobile Bottom Action Bar (Queue · Sleep Timer · Lyrics — album-synced seamless backdrop) */}
         <div
           data-no-sheet-drag
           data-testid="mobile-peek-bar"
@@ -855,129 +834,118 @@ export function NowPlayingSheet({
           onPointerUp={handleDrawerPointerEnd}
           onPointerCancel={resetDrawerDrag}
           style={{
-            paddingBottom: 'max(8px, var(--rv-safe-bottom))',
-            backgroundColor: activeTint.drawerSurface,
-            borderColor: activeTint.cardBorder,
+            paddingBottom: 'max(14px, var(--rv-safe-bottom))',
+            backgroundColor: activeTint.deepSurface,
             transform: !mobileExpanded && isDraggingDrawer && drawerDragY < 0
               ? `translate3d(0, ${drawerDragY * 0.35}px, 0)`
               : undefined,
           }}
-          className={`md:hidden touch-none shrink-0 rounded-t-[24px] border-t backdrop-blur-2xl shadow-[0_-12px_36px_rgba(0,0,0,0.48)] transition-[background-color,border-color,opacity] duration-300 ${
+          className={`md:hidden touch-none shrink-0 relative px-7 pt-2 flex items-center justify-between transition-[background-color,opacity] duration-300 ${
             mobileExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'
           }`}
         >
-          <div className="pt-2.5 pb-1 flex justify-center">
+          <button
+            type="button"
+            onClick={() => {
+              setTab('queue');
+              setShowBottomSleepMenu(false);
+              setMobileExpanded(true);
+            }}
+            className="rv-interactive-btn min-h-[44px] px-2.5 rounded-xl inline-flex items-center gap-2 text-[14px] font-medium text-[rgba(244,245,247,0.84)] hover:text-white"
+          >
+            <ListMusic className="w-[18px] h-[18px]" aria-hidden="true" />
+            <span>Queue</span>
+          </button>
+
+          <div className="relative flex items-center justify-center">
             <button
               type="button"
-              aria-label="Expand queue and lyrics panel"
-              onClick={() => setMobileExpanded(true)}
-              className="px-8 py-1.5 rounded-full flex items-center justify-center group"
+              aria-label="Sleep timer"
+              aria-expanded={showBottomSleepMenu}
+              onClick={() => setShowBottomSleepMenu((v) => !v)}
+              className={`rv-interactive-btn min-h-[44px] px-3 rounded-xl inline-flex items-center justify-center gap-1.5 transition-colors ${
+                sleepTimerMode !== 'off'
+                  ? 'text-[#a78bfa]'
+                  : 'text-[rgba(244,245,247,0.84)] hover:text-white'
+              }`}
             >
-              <span className="w-9 h-1 rounded-full bg-[rgba(255,255,255,0.3)] group-hover:bg-[rgba(255,255,255,0.5)]" />
+              <Moon
+                className={`w-[18px] h-[18px] ${sleepTimerMode !== 'off' ? 'fill-current' : ''}`}
+                aria-hidden="true"
+              />
+              {sleepTimerMode !== 'off' ? (
+                <span className="text-xs font-semibold tabular-nums">{sleepTimerMode}</span>
+              ) : null}
             </button>
-          </div>
 
-          <div className="px-4 pb-1.5 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  setTab('queue');
-                  setMobileExpanded(true);
-                }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-colors duration-150 ${
-                  tab === 'queue'
-                    ? 'bg-[#7c5cff] text-white'
-                    : 'bg-[rgba(255,255,255,0.06)] text-[rgba(244,245,247,0.75)]'
-                }`}
-              >
-                <ListMusic className="w-3.5 h-3.5" aria-hidden="true" />
-                <span>Up Next ({queue.length})</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setTab('lyrics');
-                  setMobileExpanded(true);
-                }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-colors duration-150 ${
-                  tab === 'lyrics'
-                    ? 'bg-[#7c5cff] text-white'
-                    : 'bg-[rgba(255,255,255,0.06)] text-[rgba(244,245,247,0.75)]'
-                }`}
-              >
-                <Mic2 className="w-3.5 h-3.5" aria-hidden="true" />
-                <span>Lyrics</span>
-              </button>
-            </div>
-
-            <button
-              type="button"
-              aria-label="Expand panel"
-              onClick={() => setMobileExpanded(true)}
-              className="w-10 h-10 rounded-xl bg-[rgba(255,255,255,0.06)] flex items-center justify-center text-[rgba(244,245,247,0.75)]"
-            >
-              <ChevronUp className="w-4 h-4" aria-hidden="true" />
-            </button>
-          </div>
-
-          {!mobileExpanded ? (
-            <button
-              type="button"
-              onClick={() => setMobileExpanded(true)}
-              className="w-full px-4 py-2 text-left space-y-0.5 hover:bg-[rgba(255,255,255,0.03)]"
-            >
-              {tab === 'lyrics' && lyricPreview ? (
-                <>
-                  <div
-                    style={{ color: activeTint.subtextColor || '#a78bfa' }}
-                    className="text-[13px] font-semibold truncate"
-                  >
-                    {lyricPreview.primary}
+            {showBottomSleepMenu ? (
+              <>
+                <div
+                  aria-hidden="true"
+                  onClick={() => setShowBottomSleepMenu(false)}
+                  className="fixed inset-0 z-40"
+                />
+                <div
+                  role="group"
+                  aria-label="Sleep timer options"
+                  className="rv-tab-enter absolute bottom-12 left-1/2 -translate-x-1/2 z-50 w-52 p-2 rounded-2xl rv-glass-overlay border shadow-2xl space-y-1.5"
+                >
+                  <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-[rgba(244,245,247,0.58)] text-center">
+                    Sleep Timer
                   </div>
-                  {lyricPreview.secondary ? (
-                    <div className="text-xs text-[rgba(244,245,247,0.62)] truncate">
-                      {lyricPreview.secondary}
-                    </div>
-                  ) : null}
-                </>
-              ) : tab === 'queue' && upcomingTrack ? (
-                <>
-                  <div
-                    style={{ color: activeTint.subtextColor || '#a78bfa' }}
-                    className="text-[10px] font-bold uppercase tracking-wider"
-                  >
-                    Next Up · {queue.length} queued
+                  <div className="grid grid-cols-4 gap-1">
+                    {SLEEP_OPTIONS.map(({ mode, label }) => {
+                      const selected = sleepTimerMode === mode;
+                      return (
+                        <button
+                          key={mode}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => {
+                            setSleepTimer(mode);
+                            setShowBottomSleepMenu(false);
+                          }}
+                          className={`py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${
+                            selected
+                              ? 'bg-[#7c5cff] text-white'
+                              : 'bg-[rgba(255,255,255,0.08)] text-[rgba(244,245,247,0.78)] hover:text-white'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
                   </div>
-                  <div className="text-xs font-medium text-[#f4f5f7] truncate">
-                    {upcomingTrack.title} ·{' '}
-                    <span className="text-[rgba(244,245,247,0.62)]">{upcomingTrack.artist}</span>
-                  </div>
-                </>
-              ) : lyricPreview ? (
-                <>
-                  <div
-                    style={{ color: activeTint.subtextColor || '#a78bfa' }}
-                    className="text-[13px] font-semibold truncate"
-                  >
-                    {lyricPreview.primary}
-                  </div>
-                  {lyricPreview.secondary ? (
-                    <div className="text-xs text-[rgba(244,245,247,0.62)] truncate">
-                      {lyricPreview.secondary}
-                    </div>
-                  ) : null}
-                </>
-              ) : (
-                <div className="text-xs text-[rgba(244,245,247,0.62)] truncate">
-                  Tap or swipe up for queue ({queue.length}) & lyrics
                 </div>
-              )}
-            </button>
-          ) : (
-            <div className="h-12" aria-hidden="true" />
-          )}
+              </>
+            ) : null}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setTab('lyrics');
+              setShowBottomSleepMenu(false);
+              setMobileExpanded(true);
+            }}
+            className="rv-interactive-btn min-h-[44px] px-2.5 rounded-xl inline-flex items-center gap-2 text-[14px] font-medium text-[rgba(244,245,247,0.84)] hover:text-white"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="w-[18px] h-[18px]"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <line x1="8" y1="6" x2="16" y2="6" />
+              <line x1="5" y1="10" x2="19" y2="10" />
+              <line x1="7" y1="14" x2="17" y2="14" />
+              <line x1="9.5" y1="18" x2="14.5" y2="18" />
+            </svg>
+            <span>Lyrics</span>
+          </button>
         </div>
 
         {/* Column 2: Permanently-fixed Fast GPU Bottom Sheet (< md) / Studio Panel (>= md) */}

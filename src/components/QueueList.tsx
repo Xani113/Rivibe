@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { GripVertical, MoreVertical, Play } from 'lucide-react';
+import { MoreVertical, Play } from 'lucide-react';
 import { usePlayer } from '../context/PlayerContext';
 import { useOverlay } from '../context/overlayStore';
 import { formatDuration, formatTotalDuration } from '../utils/formatTime';
@@ -34,7 +34,7 @@ export function QueueList({
   const activeTrack = queue[queueIndex] ?? currentTrack;
   const activeTint = useTrackTint(activeTrack);
 
-  // Align scroll synchronously before paint so opening Queue always starts on Playing Now + Next Queue sequence
+  // Align scroll synchronously before paint so opening Queue starts near the active song cleanly
   useLayoutEffect(() => {
     if (!isActive) return;
     const root = rootRef.current;
@@ -49,7 +49,6 @@ export function QueueList({
     }
   }, [isActive, queueIndex]);
 
-  // Subtle collapse spacer when an item is removed so count updates immediately while visual space collapses smoothly
   const prevLenRef = useRef(queue.length);
   const [collapsingPulse, setCollapsingPulse] = useState(false);
 
@@ -79,19 +78,46 @@ export function QueueList({
     return total;
   }, [queue, queueIndex, currentTime, duration]);
 
-  // Smooth touch/pointer drag-to-reorder exclusively bound to each row's grip handle
+  // Long-press drag-to-reorder (preserves clean borderless rows without left-edge index/grip clutter)
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOffsetY, setDragOffsetY] = useState(0);
+  const suppressNextClickRef = useRef(false);
+  const holdTimerRef = useRef<number | null>(null);
+  const pendingHoldRef = useRef<{
+    idx: number;
+    startX: number;
+    startY: number;
+    rowHeight: number;
+  } | null>(null);
   const dragStateRef = useRef<{
     idx: number;
     startY: number;
     rowHeight: number;
   } | null>(null);
 
-  useEffect(() => {
-    if (dragIdx === null) return;
+  const clearPendingHold = () => {
+    if (holdTimerRef.current !== null) {
+      window.clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+    pendingHoldRef.current = null;
+  };
 
-    const handlePointerMove = (e: PointerEvent) => {
+  useEffect(() => {
+    return () => {
+      if (holdTimerRef.current !== null) window.clearTimeout(holdTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleWindowMove = (e: PointerEvent) => {
+      const pending = pendingHoldRef.current;
+      if (pending) {
+        if (Math.hypot(e.clientX - pending.startX, e.clientY - pending.startY) > 8) {
+          clearPendingHold();
+        }
+      }
+
       const drag = dragStateRef.current;
       if (!drag) return;
       const dy = e.clientY - drag.startY;
@@ -115,29 +141,47 @@ export function QueueList({
       }
     };
 
-    const stopDrag = () => {
-      dragStateRef.current = null;
-      setDragIdx(null);
-      setDragOffsetY(0);
+    const stopAll = () => {
+      clearPendingHold();
+      if (dragStateRef.current) {
+        dragStateRef.current = null;
+        setDragIdx(null);
+        setDragOffsetY(0);
+      }
     };
 
-    window.addEventListener('pointermove', handlePointerMove, { passive: true });
-    window.addEventListener('pointerup', stopDrag);
-    window.addEventListener('pointercancel', stopDrag);
+    window.addEventListener('pointermove', handleWindowMove, { passive: true });
+    window.addEventListener('pointerup', stopAll);
+    window.addEventListener('pointercancel', stopAll);
     return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', stopDrag);
-      window.removeEventListener('pointercancel', stopDrag);
+      window.removeEventListener('pointermove', handleWindowMove);
+      window.removeEventListener('pointerup', stopAll);
+      window.removeEventListener('pointercancel', stopAll);
     };
-  }, [dragIdx, moveQueueItem, queue.length]);
+  }, [moveQueueItem, queue.length]);
 
-  const handleGripPointerDown = (idx: number, e: React.PointerEvent<HTMLButtonElement>) => {
-    e.stopPropagation();
+  const handleRowPointerDown = (idx: number, e: React.PointerEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('button[aria-haspopup], button[data-no-drag]')) return;
+    clearPendingHold();
     const rowEl = e.currentTarget.closest('li');
-    const rowHeight = rowEl ? rowEl.getBoundingClientRect().height + 6 : 64;
-    dragStateRef.current = { idx, startY: e.clientY, rowHeight };
-    setDragIdx(idx);
-    setDragOffsetY(0);
+    const rowHeight = rowEl ? rowEl.getBoundingClientRect().height + 4 : 62;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    pendingHoldRef.current = { idx, startX, startY, rowHeight };
+    holdTimerRef.current = window.setTimeout(() => {
+      const pending = pendingHoldRef.current;
+      pendingHoldRef.current = null;
+      holdTimerRef.current = null;
+      if (!pending) return;
+      suppressNextClickRef.current = true;
+      dragStateRef.current = {
+        idx: pending.idx,
+        startY: pending.startY,
+        rowHeight: pending.rowHeight,
+      };
+      setDragIdx(pending.idx);
+      setDragOffsetY(0);
+    }, 240);
   };
 
   if (queue.length === 0) {
@@ -149,13 +193,11 @@ export function QueueList({
     );
   }
 
-  const upcomingTotal = Math.max(0, queue.length - 1 - queueIndex);
-
   return (
-    <div ref={rootRef} className="space-y-2.5">
+    <div ref={rootRef} className="space-y-2">
       {showSummaryHeader ? (
-        <div className="px-1.5 pb-1 flex items-center justify-between gap-2 text-xs">
-          <span className="font-medium text-[rgba(244,245,247,0.72)] truncate">
+        <div className="px-2 pb-1 flex items-center justify-between gap-2 text-xs">
+          <span className="font-medium text-[rgba(244,245,247,0.68)] truncate">
             {infiniteRadio ? 'Autoplaying similar music' : 'Up next in queue'}
           </span>
           <span
@@ -169,14 +211,12 @@ export function QueueList({
 
       <ul
         role="list"
-        className={`space-y-1.5 transition-[opacity] duration-150 ${
+        className={`space-y-1 transition-[opacity] duration-150 ${
           collapsingPulse ? 'opacity-95' : 'opacity-100'
         }`}
       >
         {queue.map((item, idx) => {
           const isCurrent = idx === queueIndex;
-          const isFirstUpcoming = idx === queueIndex + 1 && upcomingTotal > 0;
-          const upcomingOrder = idx > queueIndex ? idx - queueIndex : null;
           const isDragging = dragIdx === idx;
           const eagerArt = Math.abs(idx - queueIndex) <= 10;
 
@@ -184,34 +224,30 @@ export function QueueList({
             <li
               key={`${item.id}-${idx}`}
               data-current={isCurrent}
-              className="space-y-1.5"
             >
-              {isFirstUpcoming ? (
-                <div className="px-2 pt-2 pb-0.5 flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.14em] text-[#a78bfa]">
-                  <span>Next in Queue</span>
-                  <span className="tabular-nums text-[rgba(244,245,247,0.52)]">
-                    {upcomingTotal} upcoming
-                  </span>
-                </div>
-              ) : null}
-
               <div
+                onPointerDown={(e) => handleRowPointerDown(idx, e)}
                 style={{
                   backgroundColor: isCurrent ? activeTint.cardBg : undefined,
-                  borderColor: isCurrent ? activeTint.cardBorder : undefined,
                   transform: isDragging ? `translate3d(0, ${dragOffsetY}px, 0) scale(1.015)` : undefined,
                 }}
-                className={`relative flex items-center gap-2 px-2 py-2 rounded-2xl border transition-[background-color,border-color,box-shadow] duration-200 ${
+                className={`relative flex items-center gap-3 px-2.5 py-2 rounded-xl transition-[background-color,box-shadow] duration-200 ${
                   isCurrent
-                    ? 'shadow-lg'
-                    : 'border-transparent hover:bg-[rgba(255,255,255,0.05)]'
-                } ${isDragging ? 'z-20 shadow-2xl ring-1 ring-[rgba(255,255,255,0.22)]' : ''}`}
+                    ? 'shadow-sm'
+                    : 'hover:bg-[rgba(255,255,255,0.05)]'
+                } ${isDragging ? 'z-20 touch-none shadow-2xl ring-1 ring-[rgba(255,255,255,0.22)]' : ''}`}
               >
-                {/* Drag Handle + Sequence Indicator */}
+                {/* Clean Left-Aligned Artwork + Metadata */}
                 <button
                   type="button"
-                  aria-label={`Reorder ${item.title} in queue`}
-                  onPointerDown={(e) => handleGripPointerDown(idx, e)}
+                  aria-label={`Play ${item.title} from queue`}
+                  onClick={() => {
+                    if (suppressNextClickRef.current) {
+                      suppressNextClickRef.current = false;
+                      return;
+                    }
+                    void playQueueIndex(idx);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'ArrowUp' && idx > 0) {
                       e.preventDefault();
@@ -221,23 +257,7 @@ export function QueueList({
                       moveQueueItem(idx, idx + 1);
                     }
                   }}
-                  className="touch-none w-6 h-10 rounded-lg flex items-center justify-center text-[rgba(244,245,247,0.34)] hover:text-[rgba(244,245,247,0.75)] cursor-grab active:cursor-grabbing shrink-0"
-                >
-                  {upcomingOrder !== null ? (
-                    <span className="text-[11px] font-semibold tabular-nums text-[rgba(244,245,247,0.45)]">
-                      {upcomingOrder}
-                    </span>
-                  ) : (
-                    <GripVertical className="w-4 h-4" aria-hidden="true" />
-                  )}
-                </button>
-
-                {/* Clickable Artwork + Metadata */}
-                <button
-                  type="button"
-                  aria-label={`Play ${item.title} from queue`}
-                  onClick={() => void playQueueIndex(idx)}
-                  className="flex items-center gap-3 flex-1 min-w-0 text-left rounded-xl"
+                  className="flex items-center gap-3 flex-1 min-w-0 text-left rounded-lg"
                 >
                   <div className="relative w-11 h-11 rounded-lg overflow-hidden shrink-0 bg-[#161b26]">
                     <ArtworkImage
@@ -248,7 +268,7 @@ export function QueueList({
                       className="w-full h-full object-cover"
                     />
                     {isCurrent ? (
-                      <span className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                      <span className="absolute inset-0 bg-black/45 flex items-center justify-center">
                         {isPlaying ? (
                           <span className="inline-flex items-end gap-0.5 h-3.5" aria-hidden="true">
                             <span className="w-0.5 h-full bg-white rounded-full rv-eq-bar" />
@@ -263,7 +283,7 @@ export function QueueList({
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <div className="text-[13.5px] font-semibold truncate text-[#f4f5f7]">
+                    <div className="text-[14px] font-semibold truncate text-[#f4f5f7]">
                       {item.title}
                     </div>
                     <div
@@ -280,12 +300,13 @@ export function QueueList({
                 {/* Single Clean 3-Dot Action Sheet Trigger */}
                 <button
                   type="button"
+                  data-no-drag
                   aria-label={`More options for ${item.title}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     openTrackMenu({ track: item, queueIndex: idx });
                   }}
-                  className="rv-interactive-btn w-9 h-9 rounded-xl hover:bg-[rgba(255,255,255,0.1)] flex items-center justify-center text-[rgba(244,245,247,0.82)] hover:text-[#f4f5f7] shrink-0"
+                  className="rv-interactive-btn w-9 h-9 rounded-xl hover:bg-[rgba(255,255,255,0.1)] flex items-center justify-center text-[rgba(244,245,247,0.78)] hover:text-[#f4f5f7] shrink-0"
                 >
                   <MoreVertical className="w-4 h-4" aria-hidden="true" />
                 </button>

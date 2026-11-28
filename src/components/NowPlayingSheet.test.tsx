@@ -99,8 +99,7 @@ describe('NowPlayingSheet & PlayerBar Mobile UX Regressions', () => {
     await user.click(launchBtn);
 
     const dialog = await screen.findByRole('dialog', { name: /now playing studio/i });
-    const expandHandle = screen.getByRole('button', { name: /expand queue and lyrics panel/i });
-    const peekContainer = expandHandle.closest('[data-no-sheet-drag]')!;
+    const peekContainer = screen.getByTestId('mobile-peek-bar');
 
     // Focus lands on Close button once dialog mounts, then restores to Launch Sheet when closed
     await waitFor(() => {
@@ -259,9 +258,22 @@ describe('NowPlayingSheet & PlayerBar Mobile UX Regressions', () => {
     // Autoplay pill removed from main player stage
     expect(screen.queryByRole('button', { name: /^autoplay$/i })).not.toBeInTheDocument();
 
-    // Lower peek bar receives album-cover-synced surface color
+    // Bottom action bar matches Queue · Sleep timer · Lyrics minimal layout synced to album cover
     const peekBar = screen.getByTestId('mobile-peek-bar');
     expect(peekBar.style.backgroundColor).toContain('rgba(');
+    expect(screen.getByRole('button', { name: /^queue$/i })).toBeInTheDocument();
+    const sleepBtn = screen.getByRole('button', { name: /sleep timer/i });
+    expect(sleepBtn).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^lyrics$/i })).toBeInTheDocument();
+
+    // Tapping Sleep timer opens inline quick options and activates timer
+    await user.click(sleepBtn);
+    await user.click(screen.getByRole('button', { name: /^15m$/i }));
+    expect(sleepBtn).toHaveTextContent('15m');
+
+    // Opening Queue renders clean unnumbered rows without left grip buttons
+    await user.click(screen.getByRole('button', { name: /^queue$/i }));
+    expect(screen.queryByRole('button', { name: /reorder .* in queue/i })).not.toBeInTheDocument();
     expect(dialog).toBeInTheDocument();
   });
 });
