@@ -123,6 +123,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [queueToast, setQueueToast] = useState<string | null>(null);
   const [lyrics, setLyrics] = useState<LyricsResult | null>(null);
   const [isLoadingLyrics, setIsLoadingLyrics] = useState(false);
+  const [nativePlaybackEpoch, setNativePlaybackEpoch] = useState(0);
 
   const stateRef = useRef({
     currentTrack,
@@ -308,6 +309,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           stateRef.current.isPlaying = playingNow;
           setIsPlaying(playingNow);
           if (snap?.duration && snap.duration > 0) setDuration(snap.duration);
+          setNativePlaybackEpoch((n) => n + 1);
           return playableTrack;
         } catch (err) {
           if (playRequestSeqRef.current !== reqId) return playableTrack;
@@ -701,7 +703,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         return;
       }
       if (stateRef.current.activeYoutubeVideoId) {
-        setYoutubeSeekTarget(bounded);
+        setYoutubeSeekTarget((prev) => (bounded === 0 && prev === 0 ? 0.001 : bounded));
         setCurrentTime(bounded);
         return;
       }
@@ -1017,6 +1019,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   prevTrackRef.current = prevTrack;
   const recordCompleteRef = useRef(recordComplete);
   recordCompleteRef.current = recordComplete;
+  const recordPlayRef = useRef(recordPlay);
+  recordPlayRef.current = recordPlay;
+  const appendSimilarRef = useRef(appendSimilarRecommendations);
+  appendSimilarRef.current = appendSimilarRecommendations;
 
   useEffect(() => {
     const nativePlugin = getNativeMusicPlugin();
@@ -1024,11 +1030,83 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     let active = true;
     const handles: Array<{ remove: () => Promise<void> }> = [];
 
+    const syncNativeTrackAdvance = (nextTrackId: string, prevTrackId?: string) => {
+      const {
+        queue: q,
+        queueIndex: idx,
+        currentTrack: currTrack,
+        infiniteRadio: radioOn,
+        repeatMode: rep,
+      } = stateRef.current;
+      let targetIdx = q.findIndex((t, i) => i > idx && t.id === nextTrackId);
+      if (targetIdx < 0) {
+        targetIdx = q.findIndex((t) => t.id === nextTrackId);
+      }
+      if (targetIdx < 0) return;
+
+      const matched = q[targetIdx]!;
+      const completed =
+        (prevTrackId ? q.find((t) => t.id === prevTrackId) : null) ?? currTrack;
+      if (completed && completed.id !== matched.id) {
+        recordCompleteRef.current(completed);
+      }
+
+      switchingTrackRef.current = false;
+      stateRef.current.queueIndex = targetIdx;
+      stateRef.current.currentTrack = matched;
+      stateRef.current.isPlaying = true;
+      setQueueIndex(targetIdx);
+      setCurrentTrack(matched);
+      setCurrentTime(0);
+      setDuration(matched.durationSec || 200);
+      setIsPlaying(true);
+      recordPlayRef.current(matched);
+
+      const remainingUpcoming = q.length - 1 - targetIdx;
+      const now = Date.now();
+      if (
+        radioOn &&
+        isRadioSessionRef.current &&
+        rep === 'off' &&
+        remainingUpcoming < 8 &&
+        (topUpLockRef.current.trackId !== matched.id || now - topUpLockRef.current.ts > 8000)
+      ) {
+        topUpLockRef.current = { trackId: matched.id, ts: now };
+        appendSimilarRef.current(matched, true);
+      }
+    };
+
+    const handleVisibilityCatchup = () => {
+      if (!active || document.visibilityState !== 'visible' || !activeNativeRef.current) return;
+      void nativePlugin.getPlaybackState().then((snap) => {
+        if (!active || !activeNativeRef.current) return;
+        const activeId = stateRef.current.currentTrack?.id;
+        if (snap.trackId && activeId && snap.trackId !== activeId && !switchingTrackRef.current) {
+          syncNativeTrackAdvance(snap.trackId, activeId);
+        }
+        setCurrentTime(snap.currentTime || 0);
+        if (snap.duration > 0) setDuration(snap.duration);
+        if (!switchingTrackRef.current || snap.isPlaying) {
+          if (snap.isPlaying) switchingTrackRef.current = false;
+          stateRef.current.isPlaying = Boolean(snap.isPlaying);
+          setIsPlaying(Boolean(snap.isPlaying));
+        }
+      });
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityCatchup);
+
     void Promise.all([
       nativePlugin.addListener('playbackState', (snap) => {
         if (!active || !activeNativeRef.current) return;
         const activeId = stateRef.current.currentTrack?.id;
-        if (snap.trackId && activeId && snap.trackId !== activeId) return;
+        if (snap.trackId && activeId && snap.trackId !== activeId) {
+          if (!switchingTrackRef.current && snap.isPlaying) {
+            syncNativeTrackAdvance(snap.trackId, activeId);
+          } else {
+            return;
+          }
+        }
         setCurrentTime(snap.currentTime || 0);
         if (snap.duration > 0) setDuration(snap.duration);
         if (switchingTrackRef.current && !snap.isPlaying) return;
@@ -1036,6 +1114,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const playingNow = Boolean(snap.isPlaying);
         stateRef.current.isPlaying = playingNow;
         setIsPlaying(playingNow);
+      }),
+      nativePlugin.addListener('trackAutoAdvanced', (event) => {
+        if (!active || !activeNativeRef.current || !event?.trackId) return;
+        syncNativeTrackAdvance(event.trackId, event.previousTrackId);
       }),
       nativePlugin.addListener('playbackEnded', (payload?: { trackId?: string }) => {
         if (!active || !activeNativeRef.current) return;
@@ -1071,11 +1153,110 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     return () => {
       active = false;
+      document.removeEventListener('visibilitychange', handleVisibilityCatchup);
       for (const h of handles) {
         void h.remove();
       }
     };
   }, []);
+
+  // Pre-resolve upcoming song and sync upcoming playlist to native ExoPlayer for zero-gap auto-advance
+  useEffect(() => {
+    if (!currentTrack || (!isPlaying && !activeNativeRef.current)) return;
+
+    const nativePlugin = getNativeMusicPlugin();
+    if (nativePlugin && activeNativeRef.current) {
+      void nativePlugin.setRepeatMode?.({ mode: repeatMode });
+    }
+
+    if (shuffle || repeatMode === 'one' || queue.length <= 1) {
+      if (nativePlugin && activeNativeRef.current) {
+        void nativePlugin.setUpcomingQueue?.({ anchorTrackId: currentTrack.id, tracks: [] });
+      }
+      return;
+    }
+
+    let cancelled = false;
+    const lookahead: Array<{ idx: number; track: Track }> = [];
+    for (let offset = 1; offset <= Math.min(8, queue.length - 1); offset++) {
+      const candidateIdx = queueIndex + offset;
+      if (candidateIdx < queue.length) {
+        lookahead.push({ idx: candidateIdx, track: queue[candidateIdx]! });
+      } else if (repeatMode === 'all') {
+        const wrappedIdx = candidateIdx % queue.length;
+        if (wrappedIdx !== queueIndex) {
+          lookahead.push({ idx: wrappedIdx, track: queue[wrappedIdx]! });
+        }
+      }
+    }
+
+    const syncUpcomingToNative = (items: Array<{ idx: number; track: Track }>) => {
+      if (!nativePlugin || !activeNativeRef.current) return;
+      const playablePayload = items
+        .map((entry) => entry.track)
+        .filter((t) => Boolean(t.youtubeVideoId || t.audioUrl))
+        .map((t) => ({
+          trackId: t.id,
+          title: t.title,
+          artist: t.artist,
+          album: t.album,
+          artworkUrl: t.artworkUrl,
+          youtubeVideoId: t.youtubeVideoId,
+          audioUrl: t.audioUrl ?? undefined,
+          isLiveStream: false,
+        }));
+      void nativePlugin.setUpcomingQueue?.({
+        anchorTrackId: currentTrack.id,
+        tracks: playablePayload,
+      });
+    };
+
+    syncUpcomingToNative(lookahead);
+
+    const firstNext = lookahead[0];
+    if (
+      firstNext &&
+      firstNext.track.streamType !== 'full' &&
+      !(firstNext.track.streamType === 'youtube' && firstNext.track.youtubeVideoId)
+    ) {
+      void resolveFullSongTrack(firstNext.track, apiVault).then((resolved) => {
+        if (cancelled) return;
+        const changed =
+          resolved.youtubeVideoId !== firstNext.track.youtubeVideoId ||
+          resolved.audioUrl !== firstNext.track.audioUrl ||
+          resolved.streamType !== firstNext.track.streamType;
+        if (!changed) return;
+
+        registerTracks([resolved]);
+        setQueue((curr) => {
+          const existing = curr[firstNext.idx];
+          if (!existing || existing.id !== firstNext.track.id) return curr;
+          const nextQ = curr.map((item, i) => (i === firstNext.idx ? resolved : item));
+          stateRef.current.queue = nextQ;
+          return nextQ;
+        });
+
+        const updatedLookahead = lookahead.map((entry, i) =>
+          i === 0 ? { ...entry, track: resolved } : entry,
+        );
+        syncUpcomingToNative(updatedLookahead);
+      });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    apiVault,
+    currentTrack,
+    isPlaying,
+    nativePlaybackEpoch,
+    queue,
+    queueIndex,
+    registerTracks,
+    repeatMode,
+    shuffle,
+  ]);
 
   useEffect(() => {
     // Native Android runs Media3 MediaSessionService; skip WebView MediaSession to prevent AudioFocus collisions

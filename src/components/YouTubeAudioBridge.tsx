@@ -176,6 +176,9 @@ export function YouTubeAudioBridge({
               }
               switchingVideoRef.current = false;
               latestRef.current.onStateSync(false);
+            } else if (event.data === 5 && latestRef.current.isPlaying) {
+              // Auto-play newly cued video when a track ends and transitions to next
+              event.target.playVideo();
             }
           },
           onError: () => {
@@ -211,6 +214,9 @@ export function YouTubeAudioBridge({
   useEffect(() => {
     if (seekTargetSec === null || !playerRef.current || !readyRef.current || !videoId) return;
     playerRef.current.seekTo(seekTargetSec, true);
+    if (latestRef.current.isPlaying) {
+      playerRef.current.playVideo();
+    }
   }, [seekTargetSec, videoId]);
 
   useEffect(() => {

@@ -21,9 +21,12 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.google.common.util.concurrent.ListenableFuture;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.json.JSONArray;
+import org.json.JSONObject;
 
 /**
  * Capacitor plugin exposing RiVibe's native keyless YouTube Music catalog/recommendations
@@ -76,6 +79,27 @@ public final class RiVibeNativeMusicPlugin extends Plugin {
             }
             if (isPlaying) {
                 startProgressTicker();
+            }
+        }
+
+        @Override
+        public void onMediaItemTransition(MediaItem mediaItem, int reason) {
+            MediaController controller = mediaController;
+            if (mediaItem == null || controller == null) return;
+            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                String prevTrackId = activeTrackId;
+                activeTrackId = mediaItem.mediaId;
+                activeVideoId = extractVideoIdFromMediaItem(mediaItem);
+                currentIsLiveStream = false;
+                switchGraceUntilMs = System.currentTimeMillis() + 3500L;
+                prewarmUpcomingControllerItem(controller);
+                startProgressTicker();
+                emitPlaybackState(controller);
+
+                JSObject payload = new JSObject();
+                payload.put("previousTrackId", prevTrackId);
+                payload.put("trackId", activeTrackId);
+                notifyListeners("trackAutoAdvanced", payload);
             }
         }
 
@@ -212,6 +236,79 @@ public final class RiVibeNativeMusicPlugin extends Plugin {
         });
     }
 
+    private MediaItem buildMediaItem(
+            String trackId,
+            String title,
+            String artist,
+            String album,
+            String artworkUrl,
+            String youtubeVideoId,
+            String audioUrl
+    ) {
+        String cleanVid = youtubeVideoId != null ? youtubeVideoId.replace("yt-", "").trim() : "";
+        String cleanAudioUrl = audioUrl != null ? audioUrl.trim() : "";
+        if (cleanVid.isEmpty() && cleanAudioUrl.isEmpty()) {
+            return null;
+        }
+
+        Uri mediaUri = !cleanVid.isEmpty()
+                ? Uri.parse(RiVibePlaybackService.NATIVE_TRACK_SCHEME + "://yt/" + cleanVid)
+                : Uri.parse(cleanAudioUrl);
+
+        MediaMetadata.Builder metadataBuilder = new MediaMetadata.Builder()
+                .setTitle(title != null && !title.isEmpty() ? title : "RiVibe Track")
+                .setArtist(artist != null && !artist.isEmpty() ? artist : "RiVibe")
+                .setAlbumTitle(album != null && !album.isEmpty() ? album : "RiVibe");
+        if (artworkUrl != null && !artworkUrl.isEmpty()) {
+            metadataBuilder.setArtworkUri(Uri.parse(artworkUrl));
+        }
+
+        String resolvedId = (trackId != null && !trackId.isEmpty()) ? trackId : cleanVid;
+        MediaItem.Builder itemBuilder = new MediaItem.Builder()
+                .setMediaId(resolvedId)
+                .setUri(mediaUri)
+                .setMediaMetadata(metadataBuilder.build());
+        if (!cleanVid.isEmpty()) {
+            itemBuilder.setCustomCacheKey(cleanVid);
+        }
+        return itemBuilder.build();
+    }
+
+    private String extractVideoIdFromMediaItem(MediaItem item) {
+        if (item == null || item.localConfiguration == null) return "";
+        if (item.localConfiguration.customCacheKey != null
+                && !item.localConfiguration.customCacheKey.isEmpty()) {
+            return item.localConfiguration.customCacheKey;
+        }
+        Uri uri = item.localConfiguration.uri;
+        if (uri != null && RiVibePlaybackService.NATIVE_TRACK_SCHEME.equals(uri.getScheme())) {
+            String seg = uri.getLastPathSegment();
+            return seg != null ? seg : "";
+        }
+        return "";
+    }
+
+    private void prewarmVideoStream(String videoId) {
+        String clean = videoId != null ? videoId.replace("yt-", "").trim() : "";
+        if (clean.isEmpty()) return;
+        InnertubeMusicClient client = NativeStreamRegistry.getInstance().getInnertubeClient();
+        if (client.getCachedStream(clean) != null) return;
+        networkExecutor.execute(() -> {
+            try {
+                client.resolveAudioStream(clean, "HIGHEST");
+            } catch (Exception ignored) {
+                // Best-effort prefetch
+            }
+        });
+    }
+
+    private void prewarmUpcomingControllerItem(MediaController controller) {
+        int nextIdx = controller.getCurrentMediaItemIndex() + 1;
+        if (nextIdx >= 0 && nextIdx < controller.getMediaItemCount()) {
+            prewarmVideoStream(extractVideoIdFromMediaItem(controller.getMediaItemAt(nextIdx)));
+        }
+    }
+
     @PluginMethod
     public void playTrack(PluginCall call) {
         String trackId = call.getString("trackId", "");
@@ -224,35 +321,21 @@ public final class RiVibeNativeMusicPlugin extends Plugin {
         boolean isLiveStream = Boolean.TRUE.equals(call.getBoolean("isLiveStream", false));
 
         String cleanVid = youtubeVideoId != null ? youtubeVideoId.replace("yt-", "").trim() : "";
-        String cleanAudioUrl = audioUrl != null ? audioUrl.trim() : "";
-        if (cleanVid.isEmpty() && cleanAudioUrl.isEmpty()) {
+        MediaItem mediaItem = buildMediaItem(
+                trackId,
+                title,
+                artist,
+                album,
+                artworkUrl,
+                youtubeVideoId,
+                audioUrl
+        );
+        if (mediaItem == null) {
             call.reject("Either youtubeVideoId or audioUrl is required");
             return;
         }
 
-        Uri mediaUri = !cleanVid.isEmpty()
-                ? Uri.parse(RiVibePlaybackService.NATIVE_TRACK_SCHEME + "://yt/" + cleanVid)
-                : Uri.parse(cleanAudioUrl);
-
-        MediaMetadata.Builder metadataBuilder = new MediaMetadata.Builder()
-                .setTitle(title)
-                .setArtist(artist)
-                .setAlbumTitle(album);
-        if (artworkUrl != null && !artworkUrl.isEmpty()) {
-            metadataBuilder.setArtworkUri(Uri.parse(artworkUrl));
-        }
-
-        MediaItem.Builder itemBuilder = new MediaItem.Builder()
-                .setMediaId(trackId != null && !trackId.isEmpty() ? trackId : cleanVid)
-                .setUri(mediaUri)
-                .setMediaMetadata(metadataBuilder.build());
-        if (!cleanVid.isEmpty()) {
-            itemBuilder.setCustomCacheKey(cleanVid);
-        }
-
-        MediaItem mediaItem = itemBuilder.build();
-
-        activeTrackId = trackId != null ? trackId : cleanVid;
+        activeTrackId = mediaItem.mediaId;
         activeVideoId = cleanVid;
         currentIsLiveStream = isLiveStream;
 
@@ -265,6 +348,70 @@ public final class RiVibeNativeMusicPlugin extends Plugin {
             controller.play();
             startProgressTicker();
             call.resolve(buildSnapshot(controller));
+        });
+    }
+
+    @PluginMethod
+    public void setUpcomingQueue(PluginCall call) {
+        String anchorTrackId = call.getString("anchorTrackId", "");
+        JSArray rawTracks = call.getArray("tracks");
+        List<MediaItem> upcomingItems = new ArrayList<>();
+        String firstNextVid = "";
+
+        if (rawTracks != null) {
+            int limit = Math.min(rawTracks.length(), 10);
+            for (int i = 0; i < limit; i++) {
+                JSONObject obj = rawTracks.optJSONObject(i);
+                if (obj == null) continue;
+                String vid = obj.optString("youtubeVideoId", "");
+                MediaItem item = buildMediaItem(
+                        obj.optString("trackId", ""),
+                        obj.optString("title", "RiVibe Track"),
+                        obj.optString("artist", "RiVibe"),
+                        obj.optString("album", "RiVibe"),
+                        obj.optString("artworkUrl", ""),
+                        vid,
+                        obj.optString("audioUrl", "")
+                );
+                if (item != null) {
+                    upcomingItems.add(item);
+                    if (firstNextVid.isEmpty()) {
+                        firstNextVid = vid;
+                    }
+                }
+            }
+        }
+
+        if (!firstNextVid.isEmpty()) {
+            prewarmVideoStream(firstNextVid);
+        }
+
+        withController(call, controller -> {
+            if (anchorTrackId != null && !anchorTrackId.isEmpty() && !anchorTrackId.equals(activeTrackId)) {
+                call.resolve();
+                return;
+            }
+            int count = controller.getMediaItemCount();
+            if (count > 0) {
+                int currentIdx = Math.max(0, controller.getCurrentMediaItemIndex());
+                if (count > currentIdx + 1) {
+                    controller.removeMediaItems(currentIdx + 1, count);
+                }
+                if (!upcomingItems.isEmpty()) {
+                    controller.addMediaItems(upcomingItems);
+                }
+            }
+            call.resolve();
+        });
+    }
+
+    @PluginMethod
+    public void setRepeatMode(PluginCall call) {
+        String mode = call.getString("mode", "off");
+        int repeatInt = "one".equals(mode) ? Player.REPEAT_MODE_ONE : Player.REPEAT_MODE_OFF;
+        withController(call, controller -> {
+            controller.setRepeatMode(repeatInt);
+            call.resolve();
         });
     }
 

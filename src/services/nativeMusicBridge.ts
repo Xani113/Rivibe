@@ -73,6 +73,11 @@ export interface NativeMusicPlugin {
     quality?: 'LOW' | 'HIGH' | 'HIGHEST' | 'AUTO';
   }): Promise<NativeStreamInfo>;
   playTrack(options: NativePlayTrackOptions): Promise<NativePlaybackSnapshot>;
+  setUpcomingQueue?(options: {
+    anchorTrackId: string;
+    tracks: NativePlayTrackOptions[];
+  }): Promise<void>;
+  setRepeatMode?(options: { mode: 'off' | 'all' | 'one' }): Promise<void>;
   pause(): Promise<void>;
   resume(): Promise<void>;
   seekTo(options: { positionSec: number }): Promise<void>;
@@ -87,6 +92,10 @@ export interface NativeMusicPlugin {
   addListener(
     eventName: 'playbackEnded',
     listenerFunc: (event: { trackId: string }) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: 'trackAutoAdvanced',
+    listenerFunc: (event: { previousTrackId?: string; trackId: string }) => void,
   ): Promise<PluginListenerHandle>;
   addListener(
     eventName: 'playbackError',

@@ -491,4 +491,93 @@ describe('PlayerContext & Queue Engine', () => {
     });
     expect(screen.getByTestId('play-state')).toHaveTextContent('playing');
   });
+
+  it('syncs upcoming native queue and auto-advances without stalling when a song ends', async () => {
+    const listeners = new Map<string, (payload?: never) => void>();
+    const setUpcomingQueue = vi.fn().mockResolvedValue(undefined);
+    const setRepeatMode = vi.fn().mockResolvedValue(undefined);
+    const playTrack = vi.fn().mockImplementation(async ({ trackId }: { trackId: string }) => ({
+      trackId,
+      isPlaying: true,
+      currentTime: 0,
+      duration: 200,
+      isBuffering: false,
+    }));
+
+    const mockAdapter: NativeMusicPluginAdapter = {
+      isNativeAndroid: () => true,
+      getCapabilities: vi.fn().mockResolvedValue({
+        nativeAvailable: true,
+        engine: 'media3-exoplayer+innertube',
+        innertube: true,
+        media3: true,
+      }),
+      searchCatalog: vi.fn().mockResolvedValue({ tracks: [] }),
+      getRecommendations: vi.fn().mockResolvedValue({ tracks: [] }),
+      resolveStream: vi.fn(),
+      playTrack,
+      setUpcomingQueue,
+      setRepeatMode,
+      pause: vi.fn().mockResolvedValue(undefined),
+      resume: vi.fn().mockResolvedValue(undefined),
+      seekTo: vi.fn().mockResolvedValue(undefined),
+      setVolume: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      getPlaybackState: vi.fn().mockResolvedValue({
+        trackId: 'trk-1',
+        isPlaying: true,
+        currentTime: 0,
+        duration: 200,
+        isBuffering: false,
+      }),
+      addListener: vi.fn().mockImplementation((name: string, cb: (payload?: never) => void) => {
+        listeners.set(name, cb);
+        return Promise.resolve({ remove: vi.fn() });
+      }),
+    };
+
+    __setNativeBridgeAdapterForTests(mockAdapter);
+    const user = userEvent.setup();
+
+    render(
+      <LibraryProvider>
+        <PlayerProvider>
+          <PlayerHarness />
+        </PlayerProvider>
+      </LibraryProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Play First' }));
+    await waitFor(() => {
+      expect(setUpcomingQueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          anchorTrackId: 'trk-1',
+          tracks: [expect.objectContaining({ trackId: 'trk-2' })],
+        }),
+      );
+    });
+
+    const playCallsBeforeAuto = playTrack.mock.calls.length;
+
+    // 1. Native ExoPlayer gapless transition to trk-2 updates UI without restarting playTrack
+    act(() => {
+      listeners.get('trackAutoAdvanced')?.({
+        previousTrackId: 'trk-1',
+        trackId: 'trk-2',
+      } as never);
+    });
+    expect(screen.getByTestId('now-title')).toHaveTextContent('Shelter');
+    expect(screen.getByTestId('play-state')).toHaveTextContent('playing');
+    expect(playTrack.mock.calls.length).toBe(playCallsBeforeAuto);
+
+    // 2. Fallback playbackEnded when playlist hits end also immediately starts the next track
+    await user.click(screen.getByRole('button', { name: 'Add Third To Queue' }));
+    act(() => {
+      listeners.get('playbackEnded')?.({ trackId: 'trk-2' } as never);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('now-title')).toHaveTextContent('Midnight City');
+    });
+    expect(screen.getByTestId('play-state')).toHaveTextContent('playing');
+  });
 });
