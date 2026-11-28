@@ -11,6 +11,7 @@ import type { AppTab, Playlist } from '../types/music';
 import { isNativeAndroidPlaybackAvailable } from '../services/nativeMusicBridge';
 import { useKeyboardOpen } from '../hooks/useKeyboardOpen';
 import rivibeLogo from '../assets/rivibe-logo.png';
+import { PlaylistCover } from './PlaylistCover';
 
 interface NavShellProps {
   activeTab: AppTab;
@@ -186,10 +187,10 @@ export function NavShell({
                       : 'text-[rgba(244,245,247,0.66)] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f4f5f7]'
                   }`}
                 >
-                  <img
-                    src={pl.coverUrl}
-                    alt=""
-                    className="w-6 h-6 rounded object-cover shrink-0 bg-[#161b26]"
+                  <PlaylistCover
+                    playlist={pl}
+                    size="sm"
+                    className="w-6 h-6 rounded shrink-0"
                   />
                   <span className="truncate flex-1">{pl.name}</span>
                   <span className="text-[10px] text-[rgba(244,245,247,0.42)] tabular-nums">

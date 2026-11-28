@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { ArrowLeft, Heart, History, ListMusic, ListPlus, Play, Plus, Trash2 } from 'lucide-react';
 import type { Playlist, Track } from '../types/music';
 import { TrackRow } from './TrackRow';
+import { PlaylistCover } from './PlaylistCover';
 
 type LibraryTab = 'liked' | 'playlists' | 'history';
 
@@ -86,10 +87,10 @@ export function LibraryView({
 
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 p-4 rounded-2xl bg-[#10131b] border border-[rgba(255,255,255,0.08)]">
           <div className="flex items-center gap-4 min-w-0">
-            <img
-              src={activePlaylist.coverUrl}
-              alt=""
-              className="w-20 h-20 rounded-xl object-cover shrink-0 bg-[#181d29]"
+            <PlaylistCover
+              playlist={activePlaylist}
+              size="md"
+              className="w-20 h-20 rounded-xl shrink-0"
             />
             <div className="min-w-0">
               <span className="text-[10px] font-bold uppercase tracking-wider text-[#a78bfa]">
@@ -252,10 +253,10 @@ export function LibraryView({
                 className="rv-interactive-btn group text-left p-2.5 rounded-xl bg-[#10131b] border border-[rgba(255,255,255,0.08)] hover:border-[rgba(167,139,250,0.45)]"
               >
                 <div className="aspect-square rounded-lg overflow-hidden bg-[#181d29]">
-                  <img
-                    src={pl.coverUrl}
-                    alt=""
-                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                  <PlaylistCover
+                    playlist={pl}
+                    size="lg"
+                    className="w-full h-full transition-transform duration-300 group-hover:scale-[1.03]"
                   />
                 </div>
                 <div className="mt-2">

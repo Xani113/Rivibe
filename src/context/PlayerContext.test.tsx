@@ -579,5 +579,54 @@ describe('PlayerContext & Queue Engine', () => {
       expect(screen.getByTestId('now-title')).toHaveTextContent('Midnight City');
     });
     expect(screen.getByTestId('play-state')).toHaveTextContent('playing');
+
+    // Non-finite seek is ignored safely without corrupting playback state
+    await user.click(screen.getByRole('button', { name: 'Toggle' }));
+    expect(screen.getByTestId('play-state')).toHaveTextContent('paused');
+  });
+
+  it('reflects shuffle directly in the visible upcoming queue order and restores original order when turned off', async () => {
+    const user = userEvent.setup();
+    render(
+      <LibraryProvider>
+        <PlayerProvider>
+          <PlayerHarness />
+        </PlayerProvider>
+      </LibraryProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Play First' }));
+    await user.click(screen.getByRole('button', { name: 'Add Third To Queue' }));
+    await user.click(screen.getByRole('button', { name: 'Play Fourth Next' }));
+    // Unshuffled queue: [trk-1, trk-4, trk-2, trk-3] with current at index 0
+    expect(screen.getByTestId('queue-ids')).toHaveTextContent('trk-1,trk-4,trk-2,trk-3');
+
+    // Toggle Shuffle ON: current trk-1 remains active at index 0, upcoming tail reorders visibly
+    await user.click(screen.getByRole('button', { name: 'Shuffle' }));
+    expect(screen.getByTestId('shuffle-state')).toHaveTextContent('true');
+    const shuffledIds = screen.getByTestId('queue-ids').textContent!.split(',');
+    expect(shuffledIds[0]).toBe('trk-1');
+    expect(shuffledIds).toHaveLength(4);
+    expect(shuffledIds.join(',')).not.toBe('trk-1,trk-4,trk-2,trk-3');
+    expect(screen.getByTestId('queue-idx')).toHaveTextContent('0');
+
+    // Pressing Next plays the exact track shown next in Up Next (shuffledIds[1])
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByTestId('queue-idx')).toHaveTextContent('1');
+    const idToTitle: Record<string, string> = {
+      'trk-1': 'Blue Neighbourhood',
+      'trk-2': 'Shelter',
+      'trk-3': 'Midnight City',
+      'trk-4': 'So What',
+    };
+    expect(screen.getByTestId('now-title')).toHaveTextContent(idToTitle[shuffledIds[1]!]!);
+
+    // Toggling Shuffle OFF restores the unshuffled order for remaining upcoming items
+    await user.click(screen.getByRole('button', { name: 'Shuffle' }));
+    expect(screen.getByTestId('shuffle-state')).toHaveTextContent('false');
+    const restored = screen.getByTestId('queue-ids').textContent!.split(',');
+    expect(restored.slice(0, 2)).toEqual(['trk-1', shuffledIds[1]]);
+    const expectedTail = ['trk-4', 'trk-2', 'trk-3'].filter((id) => id !== shuffledIds[1]);
+    expect(restored.slice(2)).toEqual(expectedTail);
   });
 });

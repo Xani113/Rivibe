@@ -24,6 +24,19 @@ import { loadSavedQueue, saveQueueState } from '../services/storage';
 
 export type SleepTimerMode = 'off' | '15m' | '30m' | '60m';
 
+function shuffleUpcomingList(items: Track[]): Track[] {
+  if (items.length <= 1) return items;
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j]!, copy[i]!];
+  }
+  if (copy.length >= 2 && copy.every((t, idx) => t.id === items[idx]?.id)) {
+    [copy[0], copy[1]] = [copy[1]!, copy[0]!];
+  }
+  return copy;
+}
+
 interface PlayerContextValue {
   currentTrack: Track | null;
   activeYoutubeVideoId: string | null;
@@ -98,6 +111,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const sleepTimerRef = useRef<number | null>(null);
   const isRadioSessionRef = useRef(true);
   const topUpLockRef = useRef<{ trackId: string; ts: number }>({ trackId: '', ts: 0 });
+  const unshuffledQueueRef = useRef<Track[] | null>(null);
+  const preloadedArtUrlsRef = useRef<Set<string>>(new Set());
 
   const [queue, setQueue] = useState<Track[]>(
     () => initialSavedQueue?.queue ?? SEED_TRACKS.slice(0, 6),
@@ -448,7 +463,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           const desiredAdditions = Math.max(15, 45 - remainingCount);
           const additions = fresh.filter((f) => !existingIds.has(f.id)).slice(0, desiredAdditions);
           if (additions.length === 0) return curr;
-          const updated = [...curr, ...additions];
+          if (unshuffledQueueRef.current) {
+            const unshuffledIds = new Set(unshuffledQueueRef.current.map((t) => t.id));
+            unshuffledQueueRef.current = [
+              ...unshuffledQueueRef.current,
+              ...additions.filter((a) => !unshuffledIds.has(a.id)),
+            ];
+          }
+          const orderedAdditions = stateRef.current.shuffle
+            ? shuffleUpcomingList(additions)
+            : additions;
+          const updated = [...curr, ...orderedAdditions];
           stateRef.current.queue = updated;
           return updated;
         });
@@ -475,8 +500,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           : buildTrackRadioQueue(track, catalog, tasteProfile, 40);
 
       const idx = baseList.findIndex((t) => t.id === track.id);
-      const nextQueue = idx >= 0 ? baseList : [track, ...baseList];
+      const rawQueue = idx >= 0 ? baseList : [track, ...baseList];
       const nextIdx = idx >= 0 ? idx : 0;
+
+      let nextQueue = rawQueue;
+      if (stateRef.current.shuffle && rawQueue.length - 1 - nextIdx > 1) {
+        unshuffledQueueRef.current = [...rawQueue];
+        nextQueue = [
+          ...rawQueue.slice(0, nextIdx + 1),
+          ...shuffleUpcomingList(rawQueue.slice(nextIdx + 1)),
+        ];
+      } else {
+        unshuffledQueueRef.current = null;
+      }
 
       stateRef.current.currentTrack = track;
       stateRef.current.queue = nextQueue;
@@ -701,7 +737,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const seekTo = useCallback(
     (seconds: number) => {
-      const bounded = Math.max(0, Math.min(seconds, duration || 30));
+      if (!Number.isFinite(seconds) || !Number.isFinite(duration) || duration <= 0) return;
+      const bounded = Math.max(0, Math.min(seconds, duration));
       const nativePlugin = activeNativeRef.current ? getNativeMusicPlugin() : null;
       if (nativePlugin) {
         void nativePlugin.seekTo({ positionSec: bounded });
@@ -754,13 +791,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       let nextIdx = idx + 1;
       let workingQueue = q;
 
-      if (isShuffled && q.length > 1) {
-        let candidate = Math.floor(Math.random() * q.length);
-        if (candidate === idx) candidate = (idx + 1) % q.length;
-        nextIdx = candidate;
-      } else if (nextIdx >= q.length) {
+      if (nextIdx >= q.length) {
         if (rep === 'all') {
           nextIdx = 0;
+          if (isShuffled && q.length > 1) {
+            workingQueue = shuffleUpcomingList(q);
+            stateRef.current.queue = workingQueue;
+            setQueue(workingQueue);
+          }
         } else if (radioOn) {
           const existingIds = new Set(q.map((t) => t.id));
           const extra = rankRecommendations(cat, tp, {
@@ -913,8 +951,49 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [getAudio, volume]);
 
   const toggleShuffle = useCallback(() => {
-    setShuffle((prev) => !prev);
-  }, []);
+    const q = stateRef.current.queue;
+    const idx = stateRef.current.queueIndex;
+    const nextShuffled = !stateRef.current.shuffle;
+    stateRef.current.shuffle = nextShuffled;
+    setShuffle(nextShuffled);
+
+    if (q.length <= 1 || idx < 0 || idx >= q.length) {
+      if (!nextShuffled) unshuffledQueueRef.current = null;
+      return;
+    }
+
+    const prefix = q.slice(0, idx + 1);
+    const upcoming = q.slice(idx + 1);
+
+    if (nextShuffled) {
+      unshuffledQueueRef.current = [...q];
+      if (upcoming.length > 1) {
+        const shuffledTail = shuffleUpcomingList(upcoming);
+        const nextQ = [...prefix, ...shuffledTail];
+        stateRef.current.queue = nextQ;
+        setQueue(nextQ);
+        showQueueToast('Shuffle on — Up Next reordered');
+      }
+      return;
+    }
+
+    const saved = unshuffledQueueRef.current;
+    unshuffledQueueRef.current = null;
+    if (saved && upcoming.length > 1) {
+      const rankById = new Map<string, number>();
+      saved.forEach((t, i) => {
+        if (!rankById.has(t.id)) rankById.set(t.id, i);
+      });
+      const restoredUpcoming = [...upcoming].sort((a, b) => {
+        const ra = rankById.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+        const rb = rankById.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+        return ra - rb;
+      });
+      const nextQ = [...prefix, ...restoredUpcoming];
+      stateRef.current.queue = nextQ;
+      setQueue(nextQ);
+    }
+  }, [showQueueToast]);
 
   const cycleRepeatMode = useCallback(() => {
     setRepeatMode((prev) => (prev === 'off' ? 'all' : prev === 'all' ? 'one' : 'off'));
@@ -1090,7 +1169,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (snap.trackId && activeId && snap.trackId !== activeId && !switchingTrackRef.current) {
           syncNativeTrackAdvance(snap.trackId, activeId);
         }
-        setCurrentTime(snap.currentTime || 0);
+        const safeTime =
+          snap.duration > 0 ? Math.min(snap.currentTime || 0, snap.duration) : snap.currentTime || 0;
+        setCurrentTime(Math.max(0, safeTime));
         if (snap.duration > 0) setDuration(snap.duration);
         if (!switchingTrackRef.current || snap.isPlaying) {
           if (snap.isPlaying) switchingTrackRef.current = false;
@@ -1113,7 +1194,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             return;
           }
         }
-        setCurrentTime(snap.currentTime || 0);
+        const safeTime =
+          snap.duration > 0 ? Math.min(snap.currentTime || 0, snap.duration) : snap.currentTime || 0;
+        setCurrentTime(Math.max(0, safeTime));
         if (snap.duration > 0) setDuration(snap.duration);
         if (switchingTrackRef.current && !snap.isPlaying) return;
         if (snap.isPlaying) switchingTrackRef.current = false;
@@ -1175,7 +1258,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       void nativePlugin.setRepeatMode?.({ mode: repeatMode });
     }
 
-    if (shuffle || repeatMode === 'one' || queue.length <= 1) {
+    if (repeatMode === 'one' || queue.length <= 1) {
       if (nativePlugin && activeNativeRef.current) {
         void nativePlugin.setUpcomingQueue?.({ anchorTrackId: currentTrack.id, tracks: [] });
       }
@@ -1264,6 +1347,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     shuffle,
   ]);
 
+  // Preload active and next 3 upcoming album covers into browser cache for instant display
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof Image === 'undefined') return;
+    const candidates = [currentTrack, ...queue.slice(Math.max(0, queueIndex + 1), queueIndex + 4)];
+    for (const item of candidates) {
+      const rawUrl = item?.artworkUrl?.trim();
+      if (!rawUrl) continue;
+      const cleanUrl = rawUrl.includes('maxresdefault.jpg')
+        ? rawUrl.replace('maxresdefault.jpg', 'hqdefault.jpg')
+        : rawUrl;
+      if (preloadedArtUrlsRef.current.has(cleanUrl)) continue;
+      if (preloadedArtUrlsRef.current.size > 120) {
+        preloadedArtUrlsRef.current.clear();
+      }
+      preloadedArtUrlsRef.current.add(cleanUrl);
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = cleanUrl;
+    }
+  }, [currentTrack, queue, queueIndex]);
+
   useEffect(() => {
     // Native Android runs Media3 MediaSessionService; skip WebView MediaSession to prevent AudioFocus collisions
     if (getNativeMusicPlugin() || !('mediaSession' in navigator) || !currentTrack) return;
@@ -1285,9 +1389,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!currentTrack) {
       setLyrics(null);
+      setIsLoadingLyrics(false);
       return;
     }
     let active = true;
+    setLyrics(null);
     setIsLoadingLyrics(true);
     fetchLyrics(currentTrack.artist, currentTrack.title)
       .then((lyr) => {

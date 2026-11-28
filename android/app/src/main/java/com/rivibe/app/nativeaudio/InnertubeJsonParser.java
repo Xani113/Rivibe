@@ -228,9 +228,7 @@ public final class InnertubeJsonParser {
         if (url.contains("googleusercontent.com") && url.contains("=")) {
             return url.substring(0, url.indexOf('=')) + "=w540-h540-l90-rj";
         }
-        if (url.contains("hqdefault.jpg")) {
-            return url.replace("hqdefault.jpg", "maxresdefault.jpg");
-        }
+        // Keep hqdefault.jpg instead of rewriting to maxresdefault.jpg, which 404s on many tracks
         return url;
     }
 

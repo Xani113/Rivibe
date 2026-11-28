@@ -219,17 +219,21 @@ describe('RiVibe App UI, Navigation & Queue Workflow', () => {
     expect(within(studioDialog).getByRole('tab', { name: /up next/i })).toBeInTheDocument();
     expect(within(studioDialog).getByRole('button', { name: /build radio queue from track/i })).toBeInTheDocument();
     expect(within(studioDialog).queryByRole('button', { name: /add current track to playlist/i })).not.toBeInTheDocument();
-
-    const autoplayBtn = within(studioDialog).getByRole('button', { name: /autoplay/i });
-    const initialPressed = autoplayBtn.getAttribute('aria-pressed');
-    await user.click(autoplayBtn);
-    expect(autoplayBtn.getAttribute('aria-pressed')).not.toBe(initialPressed);
+    expect(within(studioDialog).queryByRole('button', { name: /^autoplay$/i })).not.toBeInTheDocument();
 
     await user.click(within(studioDialog).getByRole('button', { name: /playlist options/i }));
+    const autoplayBtn = within(studioDialog).getByRole('button', { name: /autoplay similar/i });
+    const initialPressed = autoplayBtn.getAttribute('aria-pressed');
+    await user.click(autoplayBtn);
+    await user.click(within(studioDialog).getByRole('button', { name: /playlist options/i }));
+    expect(
+      within(studioDialog).getByRole('button', { name: /autoplay similar/i }).getAttribute('aria-pressed'),
+    ).not.toBe(initialPressed);
+
     expect(within(studioDialog).getByText(/add to playlist/i)).toBeInTheDocument();
     expect(within(studioDialog).getByText(/sleep timer/i)).toBeInTheDocument();
     await user.click(within(studioDialog).getByRole('button', { name: /^15m$/i }));
-    expect(within(studioDialog).getByRole('button', { name: /^15m$/i })).toBeInTheDocument();
+    expect(within(studioDialog).getByRole('button', { name: /15m/i })).toBeInTheDocument();
 
     await user.click(within(studioDialog).getByRole('tab', { name: /lyrics/i }));
     expect(await within(studioDialog).findByText(/Look at the stars/i)).toBeInTheDocument();

@@ -17,9 +17,7 @@ import { useLibrary } from '../context/LibraryContext';
 import { useKeyboardOpen } from '../hooks/useKeyboardOpen';
 import { formatDuration } from '../utils/formatTime';
 import { useTrackTint } from '../utils/dominantColor';
-import { SEED_TRACKS } from '../services/seedCatalog';
-
-const FALLBACK_ART = SEED_TRACKS[0]?.artworkUrl ?? '';
+import { ArtworkImage } from './ArtworkImage';
 
 interface PlayerBarProps {
   queueOpen?: boolean;
@@ -59,9 +57,19 @@ export function PlayerBar({ onOpenSheet }: PlayerBarProps) {
   const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
   const liked = currentTrack ? tasteProfile.likedTrackIds.includes(currentTrack.id) : false;
   const keyboardOpen = useKeyboardOpen();
+  const canSeek = Number.isFinite(duration) && duration > 0;
 
   const handleTrackSwipeDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('button[aria-label*="track"]')) {
+      swipeStartRef.current = null;
+      return;
+    }
     swipeStartRef.current = { x: e.clientX, y: e.clientY };
+    suppressOpenClickRef.current = false;
+  };
+
+  const handleTrackSwipeCancel = () => {
+    swipeStartRef.current = null;
     suppressOpenClickRef.current = false;
   };
 
@@ -133,11 +141,17 @@ export function PlayerBar({ onOpenSheet }: PlayerBarProps) {
           <input
             type="range"
             min={0}
-            max={Math.max(1, duration)}
-            value={currentTime}
+            max={canSeek ? duration : 0}
+            value={canSeek ? Math.min(currentTime, duration) : 0}
+            disabled={!canSeek}
             aria-label="Seek playback position"
+            aria-valuetext={
+              canSeek
+                ? `${formatDuration(currentTime)} of ${formatDuration(duration)}`
+                : 'Duration unavailable'
+            }
             onChange={(e) => seekTo(Number(e.target.value))}
-            className="absolute inset-0 -top-2 h-5 w-full opacity-0 cursor-pointer"
+            className="absolute inset-0 -top-2 h-5 w-full opacity-0 cursor-pointer disabled:cursor-default"
           />
         </div>
 
@@ -146,6 +160,7 @@ export function PlayerBar({ onOpenSheet }: PlayerBarProps) {
           <div
             onPointerDown={handleTrackSwipeDown}
             onPointerUp={handleTrackSwipeUp}
+            onPointerCancel={handleTrackSwipeCancel}
             className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1 md:flex-initial md:w-[30%] touch-pan-y"
           >
             <button
@@ -160,9 +175,10 @@ export function PlayerBar({ onOpenSheet }: PlayerBarProps) {
               }}
               className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 rounded-lg overflow-hidden bg-[#161b26] shrink-0 focus-visible:outline-2 focus-visible:outline-[#a78bfa]"
             >
-              <img
-                src={currentTrack?.artworkUrl || FALLBACK_ART}
-                alt=""
+              <ArtworkImage
+                src={currentTrack?.artworkUrl}
+                youtubeVideoId={currentTrack?.youtubeVideoId}
+                priority="high"
                 className="w-full h-full object-cover"
               />
             </button>

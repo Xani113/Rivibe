@@ -4,9 +4,7 @@ import { usePlayer } from '../context/PlayerContext';
 import { useOverlay } from '../context/overlayStore';
 import { formatDuration, formatTotalDuration } from '../utils/formatTime';
 import { useTrackTint } from '../utils/dominantColor';
-import { SEED_TRACKS } from '../services/seedCatalog';
-
-const FALLBACK_ART = SEED_TRACKS[0]?.artworkUrl ?? '';
+import { ArtworkImage } from './ArtworkImage';
 
 interface QueueListProps {
   showSummaryHeader?: boolean;
@@ -242,16 +240,11 @@ export function QueueList({
                   className="flex items-center gap-3 flex-1 min-w-0 text-left rounded-xl"
                 >
                   <div className="relative w-11 h-11 rounded-lg overflow-hidden shrink-0 bg-[#161b26]">
-                    <img
-                      src={item.artworkUrl || FALLBACK_ART}
-                      alt=""
+                    <ArtworkImage
+                      src={item.artworkUrl}
+                      youtubeVideoId={item.youtubeVideoId}
                       loading={eagerArt ? 'eager' : 'lazy'}
-                      decoding="async"
-                      onError={(e) => {
-                        if (e.currentTarget.src !== FALLBACK_ART) {
-                          e.currentTarget.src = FALLBACK_ART;
-                        }
-                      }}
+                      priority={isCurrent ? 'high' : undefined}
                       className="w-full h-full object-cover"
                     />
                     {isCurrent ? (

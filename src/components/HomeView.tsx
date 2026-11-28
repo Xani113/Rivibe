@@ -1,9 +1,7 @@
 import { ListPlus, Play } from 'lucide-react';
 import type { MoodId, Playlist, Track } from '../types/music';
-import { SEED_TRACKS } from '../services/seedCatalog';
 import { TrackRow } from './TrackRow';
-
-const FALLBACK_ART = SEED_TRACKS[0]?.artworkUrl ?? '';
+import { ArtworkImage } from './ArtworkImage';
 
 const MOODS: Array<{ id: MoodId; label: string }> = [
   { id: 'all', label: 'All' },
@@ -161,14 +159,10 @@ export function HomeView({
                     onClick={() => onPlayTrack(track, recentStrip)}
                     className="relative block w-full aspect-square rounded-xl overflow-hidden bg-[#181d29]"
                   >
-                    <img
-                      src={track.artworkUrl || FALLBACK_ART}
+                    <ArtworkImage
+                      src={track.artworkUrl}
+                      youtubeVideoId={track.youtubeVideoId}
                       alt={track.title}
-                      onError={(e) => {
-                        if (e.currentTarget.src !== FALLBACK_ART) {
-                          e.currentTarget.src = FALLBACK_ART;
-                        }
-                      }}
                       className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                     />
                     <span
@@ -246,15 +240,11 @@ export function HomeView({
                     onClick={() => onPlayTrack(track, tracks)}
                     className="relative block w-full aspect-square rounded-xl overflow-hidden bg-[#181d29]"
                   >
-                    <img
-                      src={track.artworkUrl || FALLBACK_ART}
+                    <ArtworkImage
+                      src={track.artworkUrl}
+                      youtubeVideoId={track.youtubeVideoId}
                       alt={`${track.album} art`}
                       loading="lazy"
-                      onError={(e) => {
-                        if (e.currentTarget.src !== FALLBACK_ART) {
-                          e.currentTarget.src = FALLBACK_ART;
-                        }
-                      }}
                       className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                     />
 

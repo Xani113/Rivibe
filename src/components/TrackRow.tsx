@@ -1,10 +1,8 @@
 import { Heart, ListPlus, Play } from 'lucide-react';
 import type { Playlist, Track } from '../types/music';
 import { formatDuration } from '../utils/formatTime';
-import { SEED_TRACKS } from '../services/seedCatalog';
 import { TrackActionMenu } from './TrackActionMenu';
-
-const FALLBACK_ART = SEED_TRACKS[0]?.artworkUrl ?? '';
+import { ArtworkImage } from './ArtworkImage';
 
 interface TrackRowProps {
   track: Track;
@@ -69,14 +67,9 @@ export function TrackRow({
         ) : null}
 
         <div className="relative w-11 h-11 rounded-lg overflow-hidden shrink-0 bg-[#161b26]">
-          <img
-            src={track.artworkUrl || FALLBACK_ART}
-            alt=""
-            onError={(e) => {
-              if (e.currentTarget.src !== FALLBACK_ART) {
-                e.currentTarget.src = FALLBACK_ART;
-              }
-            }}
+          <ArtworkImage
+            src={track.artworkUrl}
+            youtubeVideoId={track.youtubeVideoId}
             className="w-full h-full object-cover"
           />
           <span

@@ -6,6 +6,9 @@ export interface TrackTintPalette {
   cardBorder: string;
   subtextColor: string;
   accentHex: string;
+  deepSurface: string;
+  drawerSurface: string;
+  glowRgba: string;
 }
 
 const FALLBACK_PALETTES: Array<[number, number, number]> = [
@@ -32,11 +35,23 @@ function buildPaletteFromRgb(r: number, g: number, b: number): TrackTintPalette 
   const sg = Math.min(248, Math.round(bg + (255 - bg) * 0.56));
   const sb = Math.min(248, Math.round(bb + (255 - bb) * 0.56));
 
+  // Deep album-synced backdrops for lower Now Playing region & collapsed bottom sheet
+  const dr = Math.max(10, Math.round(br * 0.25));
+  const dg = Math.max(10, Math.round(bg * 0.25));
+  const db = Math.max(14, Math.round(bb * 0.27));
+
+  const shr = Math.max(12, Math.round(br * 0.3));
+  const shg = Math.max(12, Math.round(bg * 0.3));
+  const shb = Math.max(16, Math.round(bb * 0.32));
+
   return {
     cardBg: `rgba(${br}, ${bg}, ${bb}, 0.42)`,
-    cardBorder: `rgba(${sr}, ${sg}, ${sb}, 0.22)`,
+    cardBorder: `rgba(${sr}, ${sg}, ${sb}, 0.24)`,
     subtextColor: `rgb(${sr}, ${sg}, ${sb})`,
     accentHex: `rgb(${sr}, ${sg}, ${sb})`,
+    deepSurface: `rgba(${dr}, ${dg}, ${db}, 0.96)`,
+    drawerSurface: `rgba(${shr}, ${shg}, ${shb}, 0.94)`,
+    glowRgba: `rgba(${br}, ${bg}, ${bb}, 0.55)`,
   };
 }
 
@@ -57,6 +72,12 @@ export function getTrackFallbackTint(track: Track | null | undefined): TrackTint
   return buildPaletteFromRgb(r, g, b);
 }
 
+function supportsAnonymousCorsSampling(url: string): boolean {
+  if (!url.startsWith('http')) return false;
+  // i.ytimg.com thumbnails do not send Access-Control-Allow-Origin headers; avoid duplicate CORS-failed downloads
+  return !url.includes('i.ytimg.com');
+}
+
 /**
  * Extracts a dark-harmonized album-art tint with immediate deterministic fallback
  * and safe offscreen canvas sampling when CORS allows pixel inspection.
@@ -72,6 +93,7 @@ export function useTrackTint(track: Track | null | undefined): TrackTintPalette 
       setPalette(tintCache.get(artworkUrl)!);
       return;
     }
+    if (!supportsAnonymousCorsSampling(artworkUrl)) return;
 
     let cancelled = false;
     const img = new Image();
@@ -113,6 +135,9 @@ export function useTrackTint(track: Track | null | undefined): TrackTintPalette 
       } catch {
         // Cross-origin canvas taint fallback handled gracefully by deterministic palette
       }
+    };
+    img.onerror = () => {
+      // Preserve immediate deterministic palette without throwing
     };
     img.src = artworkUrl;
 
