@@ -90,7 +90,7 @@ export function SettingsModal({
         {/* Header */}
         <div className="px-5 py-4 border-b border-[rgba(255,255,255,0.08)] flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <Settings className="w-5 h-5 text-[#22d3a6]" aria-hidden="true" />
+            <Settings className="w-5 h-5 text-[#a78bfa]" aria-hidden="true" />
             <div>
               <h2 className="text-base font-bold text-[#f4f5f7]">Settings</h2>
               <p className="text-xs text-[rgba(244,245,247,0.55)]">Audio engine & app downloads</p>
@@ -122,7 +122,7 @@ export function SettingsModal({
                   : 'Audius full tracks play instantly; optional YouTube key unlocks full songs in browser.'}
               </div>
             </div>
-            <CheckCircle2 className="w-5 h-5 text-[#22d3a6] shrink-0" aria-hidden="true" />
+            <CheckCircle2 className="w-5 h-5 text-[#a78bfa] shrink-0" aria-hidden="true" />
           </div>
 
           {/* Web-Only Optional YouTube API Key */}
@@ -137,7 +137,7 @@ export function SettingsModal({
                   value={draft.youtubeApiKey}
                   onChange={(e) => setDraft({ ...draft, youtubeApiKey: e.target.value })}
                   placeholder="AIza..."
-                  className="w-full px-3.5 py-2 rounded-lg bg-[#121620] border border-[rgba(255,255,255,0.12)] text-xs text-[#f4f5f7] focus:outline-none focus:border-[#22d3a6]"
+                  className="w-full px-3.5 py-2 rounded-lg bg-[#121620] border border-[rgba(255,255,255,0.12)] text-xs text-[#f4f5f7] focus:outline-none focus:border-[#a78bfa]"
                 />
               </label>
 
@@ -152,7 +152,7 @@ export function SettingsModal({
                 </button>
                 <button
                   type="submit"
-                  className="rv-interactive-btn px-4 py-1.5 rounded-lg bg-[#22d3a6] text-[#042019] text-xs font-bold"
+                  className="rv-interactive-btn px-4 py-1.5 rounded-lg bg-[#7c5cff] hover:bg-[#8d70ff] text-white text-xs font-bold"
                 >
                   {savedToast ? 'Saved ✓' : 'Save Key'}
                 </button>
@@ -164,11 +164,11 @@ export function SettingsModal({
           <section className="pt-4 border-t border-[rgba(255,255,255,0.08)] space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold uppercase tracking-wider text-[rgba(244,245,247,0.55)] flex items-center gap-1.5">
-                <Smartphone className="w-3.5 h-3.5 text-[#22d3a6]" aria-hidden="true" />
+                <Smartphone className="w-3.5 h-3.5 text-[#a78bfa]" aria-hidden="true" />
                 Get RiVibe App
               </h3>
               {isInstalled ? (
-                <span className="text-[11px] font-semibold text-[#22d3a6]">PWA Installed</span>
+                <span className="text-[11px] font-semibold text-[#a78bfa]">PWA Installed</span>
               ) : null}
             </div>
 
@@ -179,7 +179,7 @@ export function SettingsModal({
                   onClick={() => void handleChromeInstall()}
                   className="rv-interactive-btn px-3.5 py-2 rounded-lg bg-[#161b26] hover:bg-[#1e2433] border border-[rgba(255,255,255,0.1)] text-xs font-semibold text-[#f4f5f7] inline-flex items-center gap-1.5"
                 >
-                  <Download className="w-3.5 h-3.5 text-[#22d3a6]" aria-hidden="true" />
+                  <Download className="w-3.5 h-3.5 text-[#a78bfa]" aria-hidden="true" />
                   {canInstallNatively ? 'Install App' : 'Install via Chrome'}
                 </button>
               ) : null}
@@ -195,7 +195,7 @@ export function SettingsModal({
               </a>
             </div>
             {installFeedback ? (
-              <p className="text-xs text-[#22d3a6]">{installFeedback}</p>
+              <p className="text-xs text-[#a78bfa]">{installFeedback}</p>
             ) : null}
           </section>
         </div>

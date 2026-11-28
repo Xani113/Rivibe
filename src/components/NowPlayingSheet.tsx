@@ -6,6 +6,7 @@ import {
   Infinity as InfinityIcon,
   ListMusic,
   Mic2,
+  Moon,
   MoreHorizontal,
   Pause,
   Play,
@@ -18,14 +19,22 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { usePlayer } from '../context/PlayerContext';
+import { usePlayer, type SleepTimerMode } from '../context/PlayerContext';
 import { useLibrary } from '../context/LibraryContext';
+import { useOptionalOverlay } from '../context/overlayStore';
 import { useAnimatedOverlay } from '../hooks/useAnimatedOverlay';
 import { formatDuration } from '../utils/formatTime';
+import { useTrackTint } from '../utils/dominantColor';
 import { SEED_TRACKS } from '../services/seedCatalog';
 import { QueueList } from './QueueList';
 
 const FALLBACK_ART = SEED_TRACKS[0]?.artworkUrl ?? '';
+const SLEEP_OPTIONS: Array<{ mode: SleepTimerMode; label: string }> = [
+  { mode: 'off', label: 'Off' },
+  { mode: '15m', label: '15m' },
+  { mode: '30m', label: '30m' },
+  { mode: '60m', label: '60m' },
+];
 
 interface NowPlayingSheetProps {
   isOpen: boolean;
@@ -56,9 +65,11 @@ export function NowPlayingSheet({
     shuffle,
     repeatMode,
     infiniteRadio,
+    sleepTimerMode,
     lyrics,
     isLoadingLyrics,
     setInfiniteRadio,
+    setSleepTimer,
     toggleShuffle,
     cycleRepeatMode,
     clearUpcomingQueue,
@@ -69,6 +80,7 @@ export function NowPlayingSheet({
     seekTo,
   } = usePlayer();
   const { tasteProfile, playlists, toggleLike, addTrackToPlaylist } = useLibrary();
+  const overlay = useOptionalOverlay();
 
   const { shouldRender, isVisible } = useAnimatedOverlay(isOpen, 360);
 
@@ -169,6 +181,7 @@ export function NowPlayingSheet({
   }, [lyrics, activeLyricIndex]);
 
   const activeTrack = currentTrack ?? lastTrackRef.current;
+  const activeTint = useTrackTint(activeTrack);
   if (!shouldRender || !activeTrack) return null;
 
   const liked = tasteProfile.likedTrackIds.includes(activeTrack.id);
@@ -307,21 +320,19 @@ export function NowPlayingSheet({
           : 'transition-[transform,opacity] duration-[360ms] ease-[cubic-bezier(0.32,0.72,0,1)]'
       } ${!isVisible ? 'pointer-events-none' : ''}`}
     >
-      {/* Mobile Full-Bleed Immersive Artwork Hero Backdrop */}
+      {/* Mobile Atmospheric Album-Art Ambient Backdrop */}
       {artSrc ? (
         <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden md:hidden">
           <img
             src={artSrc}
             alt=""
-            className="w-full h-[64dvh] object-cover object-center transition-opacity duration-300"
+            className="absolute inset-0 w-full h-full object-cover scale-125 blur-[76px] saturate-150 opacity-50"
           />
-          <img
-            src={artSrc}
-            alt=""
-            className="absolute inset-0 w-full h-full object-cover scale-125 blur-[72px] saturate-150 opacity-45 -z-10"
+          <div
+            style={{ backgroundColor: activeTint.cardBg }}
+            className="absolute inset-0 opacity-35"
           />
-          <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-[#090b10]/70 to-transparent" />
-          <div className="absolute inset-x-0 top-[24dvh] bottom-0 bg-gradient-to-b from-transparent via-[#090b10]/85 via-45% to-[#090b10]" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#090b10]/65 via-[#090b10]/50 to-[#090b10]" />
         </div>
       ) : null}
 
@@ -329,7 +340,7 @@ export function NowPlayingSheet({
       {artSrc ? (
         <div
           aria-hidden="true"
-          className="pointer-events-none fixed inset-0 overflow-hidden hidden md:block opacity-25"
+          className="pointer-events-none fixed inset-0 overflow-hidden hidden md:block opacity-30"
         >
           <img
             src={artSrc}
@@ -362,28 +373,34 @@ export function NowPlayingSheet({
             {activeTrack.album || 'Now Playing'}
           </div>
           <div className="hidden md:block min-w-0">
-            <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#22d3a6]">
+            <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#a78bfa]">
               Now Playing
             </span>
             <h2 className="text-sm font-semibold text-[#f4f5f7] truncate">{activeTrack.album}</h2>
           </div>
         </div>
 
-        {/* Playlist Menu Trigger */}
+        {/* Playlist & Sleep Timer Menu Trigger */}
         <div className="order-3 md:order-2 relative shrink-0 md:ml-auto">
           <button
             type="button"
             aria-label="Playlist options"
             aria-expanded={showPlaylistMenu}
             onClick={() => setShowPlaylistMenu((v) => !v)}
-            className="rv-interactive-btn w-11 h-11 md:w-10 md:h-10 rounded-2xl md:rounded-xl bg-[rgba(14,18,27,0.58)] md:bg-[rgba(255,255,255,0.08)] hover:bg-[rgba(255,255,255,0.16)] backdrop-blur-xl border border-[rgba(255,255,255,0.14)] md:border-transparent flex items-center justify-center text-[#f4f5f7]"
+            className="rv-interactive-btn relative w-11 h-11 md:w-10 md:h-10 rounded-2xl md:rounded-xl bg-[rgba(14,18,27,0.58)] md:bg-[rgba(255,255,255,0.08)] hover:bg-[rgba(255,255,255,0.16)] backdrop-blur-xl border border-[rgba(255,255,255,0.14)] md:border-transparent flex items-center justify-center text-[#f4f5f7]"
           >
             <MoreHorizontal className="w-5 h-5" aria-hidden="true" />
+            {sleepTimerMode !== 'off' ? (
+              <span
+                aria-hidden="true"
+                className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#a78bfa]"
+              />
+            ) : null}
           </button>
 
           {showPlaylistMenu ? (
-            <div className="rv-tab-enter absolute right-0 top-12 z-50 w-52 p-1.5 rounded-2xl rv-glass-overlay border shadow-2xl space-y-0.5">
-              <div className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[rgba(244,245,247,0.52)]">
+            <div className="rv-tab-enter absolute right-0 top-12 z-50 w-56 p-1.5 rounded-2xl rv-glass-overlay border shadow-2xl space-y-1">
+              <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[rgba(244,245,247,0.52)]">
                 Add to Playlist
               </div>
               {playlists.map((pl) => (
@@ -394,22 +411,56 @@ export function NowPlayingSheet({
                     addTrackToPlaylist(pl.id, activeTrack);
                     setShowPlaylistMenu(false);
                   }}
-                  className="w-full px-2.5 py-2 rounded-xl text-xs font-medium text-[#f4f5f7] hover:bg-[rgba(34,211,166,0.16)] hover:text-[#22d3a6] text-left truncate"
+                  className="w-full px-2.5 py-2 rounded-xl text-xs font-medium text-[#f4f5f7] hover:bg-[rgba(124,92,255,0.18)] hover:text-[#c4b5fd] text-left truncate"
                 >
                   {pl.name}
                 </button>
               ))}
+
+              <div className="my-1 border-t border-[rgba(255,255,255,0.08)]" />
+              <div className="px-2.5 py-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[rgba(244,245,247,0.52)]">
+                <Moon className="w-3 h-3 text-[#a78bfa]" aria-hidden="true" />
+                <span>Sleep Timer</span>
+              </div>
+              <div className="grid grid-cols-4 gap-1 px-1 pb-1">
+                {SLEEP_OPTIONS.map(({ mode, label }) => {
+                  const selected = sleepTimerMode === mode;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => {
+                        setSleepTimer(mode);
+                        setShowPlaylistMenu(false);
+                      }}
+                      className={`py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${
+                        selected
+                          ? 'bg-[#7c5cff] text-white'
+                          : 'bg-[rgba(255,255,255,0.06)] text-[rgba(244,245,247,0.72)] hover:text-[#f4f5f7]'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           ) : null}
         </div>
       </div>
 
-      {/* Responsive Stage: Full-Bleed Mobile Flow -> Split Desktop Studio */}
+      {/* Responsive Stage: Framed Mobile Art Flow -> Split Desktop Studio */}
       <div className="relative z-10 flex-1 min-h-0 w-full max-w-6xl mx-auto flex flex-col justify-end md:grid md:grid-cols-2 md:gap-8 md:items-center md:p-8 overflow-hidden">
-        {/* Column 1: Cover (Desktop) + Title, Action Pills, Scrubber & Transport */}
-        <div className="w-full max-w-md mx-auto px-5 pb-3 md:p-0 flex flex-col justify-end md:justify-center space-y-3.5 md:space-y-5 flex-1 md:flex-initial min-h-0">
+        {/* Column 1: Framed Cover Art + Title, Tappable Artist, Action Pills, Dynamic Scrubber & Transport */}
+        <div className="w-full max-w-md mx-auto px-5 pb-3 md:p-0 flex flex-col justify-end md:justify-center space-y-3 md:space-y-5 flex-1 md:flex-initial min-h-0">
           {/* Desktop Square Cover Art */}
-          <div className="hidden md:block w-64 h-64 lg:w-80 lg:h-80 mx-auto rounded-2xl overflow-hidden bg-[#161b26] shadow-2xl border border-[rgba(255,255,255,0.12)]">
+          <div
+            style={{
+              borderColor: activeTint.cardBorder,
+              boxShadow: `0 24px 60px rgba(0,0,0,0.6), 0 0 42px ${activeTint.cardBg}`,
+            }}
+            className="hidden md:block w-64 h-64 lg:w-80 lg:h-80 mx-auto rounded-2xl overflow-hidden bg-[#161b26] border"
+          >
             <img
               src={artSrc}
               alt={`${activeTrack.album} artwork`}
@@ -417,35 +468,63 @@ export function NowPlayingSheet({
             />
           </div>
 
-          {/* Mobile Spacer Above Scrim */}
-          <div className="flex-1 min-h-[12dvh] md:hidden" aria-hidden="true" />
+          {/* Mobile Crisp Framed Artwork Card */}
+          <div className="md:hidden flex-1 min-h-0 flex items-center justify-center py-1">
+            <div
+              style={{
+                borderColor: activeTint.cardBorder,
+                boxShadow: `0 20px 54px rgba(0,0,0,0.68), 0 0 38px ${activeTint.cardBg}`,
+              }}
+              className="w-[min(58vw,224px)] max-h-[29dvh] aspect-square rounded-2xl overflow-hidden bg-[#161b26] border"
+            >
+              <img
+                src={artSrc}
+                alt={`${activeTrack.album} artwork`}
+                className="w-full h-full object-cover"
+              />
+            </div>
+          </div>
 
-          {/* Title, Artist & Floating Frosted Heart */}
+          {/* Title, Tappable Artist Credit & Floating Frosted Heart */}
           <div className="w-full flex items-end justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <div className="md:hidden text-[11px] font-medium uppercase tracking-[0.12em] text-[rgba(244,245,247,0.62)] truncate mb-0.5">
+              <div className="md:hidden text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[rgba(244,245,247,0.58)] truncate mb-0.5">
                 Playing From · {activeTrack.album || 'Single'}
               </div>
-              <h3 className="text-[22px] sm:text-2xl font-bold text-[#f4f5f7] leading-tight line-clamp-2 text-balance">
+              <h3 className="text-[21px] sm:text-2xl font-bold text-[#f4f5f7] leading-tight line-clamp-2 text-balance">
                 {activeTrack.title}
               </h3>
-              <p className="text-sm text-[rgba(244,245,247,0.72)] truncate mt-0.5">
+              <button
+                type="button"
+                aria-label={`Know about ${activeTrack.artist}`}
+                onClick={() => overlay?.openArtistInfo(activeTrack.artist, activeTrack)}
+                className="text-sm text-[rgba(244,245,247,0.76)] hover:text-white hover:underline underline-offset-2 truncate mt-0.5 max-w-full text-left block"
+              >
                 {activeTrack.artist}
-              </p>
+              </button>
             </div>
 
             <button
               type="button"
               aria-label={liked ? 'Unlike track' : 'Like track'}
               onClick={() => toggleLike(activeTrack)}
+              style={
+                liked
+                  ? {
+                      backgroundColor: activeTint.cardBg,
+                      borderColor: activeTint.cardBorder,
+                      color: activeTint.subtextColor,
+                    }
+                  : undefined
+              }
               className={`rv-interactive-btn w-11 h-11 rounded-2xl flex items-center justify-center border shrink-0 backdrop-blur-md ${
                 liked
-                  ? 'bg-[rgba(34,211,166,0.2)] border-[rgba(34,211,166,0.45)] text-[#22d3a6]'
+                  ? 'shadow-lg'
                   : 'bg-[rgba(255,255,255,0.1)] hover:bg-[rgba(255,255,255,0.16)] border-[rgba(255,255,255,0.16)] text-[#f4f5f7]'
               }`}
             >
               <Heart
-                className={`w-5 h-5 ${liked ? 'fill-[#22d3a6] text-[#22d3a6]' : ''}`}
+                className={`w-5 h-5 ${liked ? 'fill-current' : ''}`}
                 aria-hidden="true"
               />
             </button>
@@ -459,7 +538,11 @@ export function NowPlayingSheet({
               onClick={() => void startTrackRadio(activeTrack)}
               className="rv-interactive-btn h-10 px-3.5 rounded-full bg-[rgba(255,255,255,0.09)] hover:bg-[rgba(255,255,255,0.16)] backdrop-blur-md border border-[rgba(255,255,255,0.12)] text-xs font-semibold text-[#f4f5f7] inline-flex items-center gap-1.5 shrink-0"
             >
-              <Radio className="w-3.5 h-3.5 text-[#22d3a6]" aria-hidden="true" />
+              <Radio
+                className="w-3.5 h-3.5"
+                style={{ color: activeTint.accentHex || '#a78bfa' }}
+                aria-hidden="true"
+              />
               <span>Radio</span>
             </button>
 
@@ -467,30 +550,57 @@ export function NowPlayingSheet({
               type="button"
               aria-pressed={infiniteRadio}
               onClick={() => setInfiniteRadio(!infiniteRadio)}
+              style={
+                infiniteRadio
+                  ? {
+                      backgroundColor: activeTint.cardBg,
+                      borderColor: activeTint.cardBorder,
+                      color: activeTint.subtextColor,
+                    }
+                  : undefined
+              }
               className={`rv-interactive-btn h-10 px-3.5 rounded-full backdrop-blur-md border text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 ${
                 infiniteRadio
-                  ? 'bg-[rgba(34,211,166,0.18)] border-[rgba(34,211,166,0.42)] text-[#22d3a6]'
+                  ? 'shadow-sm'
                   : 'bg-[rgba(255,255,255,0.09)] hover:bg-[rgba(255,255,255,0.16)] border-[rgba(255,255,255,0.12)] text-[rgba(244,245,247,0.82)]'
               }`}
             >
               <InfinityIcon className="w-3.5 h-3.5" aria-hidden="true" />
               <span>Autoplay</span>
             </button>
+
+            {sleepTimerMode !== 'off' ? (
+              <button
+                type="button"
+                onClick={() => setSleepTimer('off')}
+                className="rv-interactive-btn h-10 px-3 rounded-full bg-[rgba(124,92,255,0.2)] border border-[rgba(167,139,250,0.45)] text-xs font-semibold text-[#c4b5fd] inline-flex items-center gap-1.5 shrink-0"
+              >
+                <Moon className="w-3.5 h-3.5" aria-hidden="true" />
+                <span>{sleepTimerMode}</span>
+              </button>
+            ) : null}
           </div>
 
-          {/* High-Contrast Gradient Seek Bar */}
+          {/* High-Contrast Album-Tinted Seek Bar */}
           <div className="w-full space-y-1.5 pt-0.5">
             <div className="relative h-6 flex items-center">
               <div className="w-full h-1.5 rounded-full bg-[rgba(255,255,255,0.18)] overflow-hidden pointer-events-none">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-[#22d3a6] to-[#6ee7b7]"
-                  style={{ width: `${progress}%` }}
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${progress}%`,
+                    background: `linear-gradient(90deg, ${activeTint.accentHex || '#7c5cff'}, #f4f5f7)`,
+                  }}
                 />
               </div>
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-[#22d3a6] shadow-[0_0_12px_rgba(34,211,166,0.85)] ring-2 ring-[#f4f5f7]"
-                style={{ left: `calc(${progress}% - 7px)` }}
+                className="pointer-events-none absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full ring-2 ring-[#f4f5f7]"
+                style={{
+                  left: `calc(${progress}% - 7px)`,
+                  backgroundColor: activeTint.accentHex || '#a78bfa',
+                  boxShadow: `0 0 12px ${activeTint.accentHex || 'rgba(124,92,255,0.85)'}`,
+                }}
               />
               <input
                 type="range"
@@ -518,7 +628,7 @@ export function NowPlayingSheet({
               onClick={toggleShuffle}
               className={`rv-interactive-btn w-11 h-11 rounded-2xl flex items-center justify-center ${
                 shuffle
-                  ? 'bg-[rgba(34,211,166,0.18)] text-[#22d3a6]'
+                  ? 'bg-[rgba(124,92,255,0.22)] text-[#c4b5fd]'
                   : 'bg-[rgba(255,255,255,0.06)] text-[rgba(244,245,247,0.75)] hover:text-[#f4f5f7]'
               }`}
             >
@@ -562,7 +672,7 @@ export function NowPlayingSheet({
               onClick={cycleRepeatMode}
               className={`rv-interactive-btn w-11 h-11 rounded-2xl flex items-center justify-center ${
                 repeatMode !== 'off'
-                  ? 'bg-[rgba(34,211,166,0.18)] text-[#22d3a6]'
+                  ? 'bg-[rgba(124,92,255,0.22)] text-[#c4b5fd]'
                   : 'bg-[rgba(255,255,255,0.06)] text-[rgba(244,245,247,0.75)] hover:text-[#f4f5f7]'
               }`}
             >
@@ -613,7 +723,7 @@ export function NowPlayingSheet({
                 }}
                 className={`px-3 py-1.5 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-colors duration-150 ${
                   tab === 'queue'
-                    ? 'bg-[#22d3a6] text-[#042019]'
+                    ? 'bg-[#7c5cff] text-white'
                     : 'bg-[rgba(255,255,255,0.06)] text-[rgba(244,245,247,0.75)]'
                 }`}
               >
@@ -629,7 +739,7 @@ export function NowPlayingSheet({
                 }}
                 className={`px-3 py-1.5 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-colors duration-150 ${
                   tab === 'lyrics'
-                    ? 'bg-[#22d3a6] text-[#042019]'
+                    ? 'bg-[#7c5cff] text-white'
                     : 'bg-[rgba(255,255,255,0.06)] text-[rgba(244,245,247,0.75)]'
                 }`}
               >
@@ -656,7 +766,7 @@ export function NowPlayingSheet({
             >
               {tab === 'lyrics' && lyricPreview ? (
                 <>
-                  <div className="text-[13px] font-semibold text-[#22d3a6] truncate">
+                  <div className="text-[13px] font-semibold text-[#a78bfa] truncate">
                     {lyricPreview.primary}
                   </div>
                   {lyricPreview.secondary ? (
@@ -667,7 +777,7 @@ export function NowPlayingSheet({
                 </>
               ) : tab === 'queue' && upcomingTrack ? (
                 <>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-[#22d3a6]">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-[#a78bfa]">
                     Next Up · {queue.length} queued
                   </div>
                   <div className="text-xs font-medium text-[#f4f5f7] truncate">
@@ -677,7 +787,7 @@ export function NowPlayingSheet({
                 </>
               ) : lyricPreview ? (
                 <>
-                  <div className="text-[13px] font-semibold text-[#22d3a6] truncate">
+                  <div className="text-[13px] font-semibold text-[#a78bfa] truncate">
                     {lyricPreview.primary}
                   </div>
                   {lyricPreview.secondary ? (
@@ -760,7 +870,7 @@ export function NowPlayingSheet({
                   }}
                   className={`px-3 py-1.5 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-colors duration-150 ${
                     tab === id
-                      ? 'bg-[#22d3a6] text-[#042019]'
+                      ? 'bg-[#7c5cff] text-white'
                       : 'text-[rgba(244,245,247,0.68)] hover:text-[#f4f5f7] hover:bg-[rgba(255,255,255,0.06)]'
                   }`}
                 >
@@ -793,20 +903,20 @@ export function NowPlayingSheet({
             </div>
           </div>
 
-          {/* Persistent Queue Container + Synced Lyrics Body (Zero Remount Delay / Blank Flash) */}
+          {/* Persistent Queue Container + Studio Fade Lyrics Body */}
           <div data-queue-scroll-container className="flex-1 overflow-y-auto rv-scroll p-3">
             <div className={tab === 'queue' ? 'block' : 'hidden'}>
               <QueueList isActive={isVisible && tab === 'queue' && mobileExpanded} />
             </div>
 
             {tab === 'lyrics' ? (
-              <div className="rv-tab-enter">
+              <div className="rv-tab-enter [mask-image:linear-gradient(to_bottom,transparent,black_6%,black_94%,transparent)]">
                 {isLoadingLyrics ? (
                   <div className="py-12 text-center text-xs text-[rgba(244,245,247,0.58)]">
                     Loading lyrics...
                   </div>
                 ) : lyrics?.syncedLines && lyrics.syncedLines.length > 0 ? (
-                  <div className="space-y-1.5 py-2">
+                  <div className="space-y-1.5 py-3">
                     {lyrics.syncedLines.map((line, i) => {
                       const active = i === activeLyricIndex;
                       return (
@@ -817,7 +927,7 @@ export function NowPlayingSheet({
                           onClick={() => seekTo(line.timeSec)}
                           className={`block w-full text-left px-3 py-1.5 rounded-lg transition-colors duration-150 ${
                             active
-                              ? 'text-base font-bold text-[#22d3a6] bg-[rgba(34,211,166,0.08)]'
+                              ? 'text-base font-bold text-[#c4b5fd] bg-[rgba(124,92,255,0.14)]'
                               : 'text-sm font-medium text-[rgba(244,245,247,0.52)] hover:text-[#f4f5f7]'
                           }`}
                         >
@@ -827,7 +937,7 @@ export function NowPlayingSheet({
                     })}
                   </div>
                 ) : (
-                  <div className="text-sm leading-relaxed text-[rgba(244,245,247,0.84)] whitespace-pre-line px-1">
+                  <div className="text-sm leading-relaxed text-[rgba(244,245,247,0.84)] whitespace-pre-line px-1 py-2">
                     {lyrics?.lyrics}
                   </div>
                 )}

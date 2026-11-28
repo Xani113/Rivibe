@@ -52,7 +52,7 @@ export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
         {/* Header */}
         <div className="px-4 py-3.5 border-b border-[rgba(255,255,255,0.08)] flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <ListMusic className="w-4 h-4 text-[#22d3a6] shrink-0" aria-hidden="true" />
+            <ListMusic className="w-4 h-4 text-[#a78bfa] shrink-0" aria-hidden="true" />
             <h2 className="text-sm font-bold text-[#f4f5f7]">Up Next</h2>
             <span className="px-1.5 py-0.5 rounded bg-[rgba(255,255,255,0.08)] text-[10px] font-semibold text-[rgba(244,245,247,0.75)] tabular-nums">
               {queue.length}
@@ -99,7 +99,7 @@ export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
             onClick={() => setInfiniteRadio(!infiniteRadio)}
             className={`rv-interactive-btn px-2.5 py-1 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 border ${
               infiniteRadio
-                ? 'bg-[rgba(34,211,166,0.16)] border-[rgba(34,211,166,0.4)] text-[#22d3a6]'
+                ? 'bg-[rgba(124,92,255,0.18)] border-[rgba(167,139,250,0.45)] text-[#c4b5fd]'
                 : 'bg-[#161b26] border-[rgba(255,255,255,0.08)] text-[rgba(244,245,247,0.6)]'
             }`}
           >

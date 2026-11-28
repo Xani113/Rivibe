@@ -92,7 +92,7 @@ export function LibraryView({
               className="w-20 h-20 rounded-xl object-cover shrink-0 bg-[#181d29]"
             />
             <div className="min-w-0">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#22d3a6]">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#a78bfa]">
                 Playlist
               </span>
               <h1 className="text-xl font-bold text-[#f4f5f7] truncate">{activePlaylist.name}</h1>
@@ -108,7 +108,7 @@ export function LibraryView({
                 <button
                   type="button"
                   onClick={() => onPlayTrack(activePlaylistTracks[0]!, activePlaylistTracks)}
-                  className="rv-interactive-btn px-4 py-2 rounded-lg bg-[#22d3a6] text-[#042019] text-xs font-bold inline-flex items-center gap-1.5"
+                  className="rv-interactive-btn px-4 py-2 rounded-lg bg-[#7c5cff] hover:bg-[#8d70ff] text-white text-xs font-bold inline-flex items-center gap-1.5"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" aria-hidden="true" />
                   Play All
@@ -191,9 +191,9 @@ export function LibraryView({
                 role="tab"
                 aria-selected={active}
                 onClick={() => setSubTab(id)}
-                className={`rv-interactive-btn px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 border ${
+                className={`rv-interactive-btn px-3 py-1.5 rounded-full text-xs font-semibold inline-flex items-center gap-1.5 border ${
                   active
-                    ? 'bg-[#22d3a6] text-[#042019] border-[#22d3a6]'
+                    ? 'bg-[#7c5cff] text-white border-[#7c5cff]'
                     : 'bg-[#121620] text-[rgba(244,245,247,0.75)] border-[rgba(255,255,255,0.08)]'
                 }`}
               >
@@ -216,7 +216,7 @@ export function LibraryView({
               onClick={() => setCreating((v) => !v)}
               className="rv-interactive-btn px-3 py-1.5 rounded-lg bg-[#121620] hover:bg-[#19202e] border border-[rgba(255,255,255,0.1)] text-xs font-semibold text-[#f4f5f7] inline-flex items-center gap-1.5"
             >
-              <Plus className="w-3.5 h-3.5 text-[#22d3a6]" aria-hidden="true" />
+              <Plus className="w-3.5 h-3.5 text-[#a78bfa]" aria-hidden="true" />
               New Playlist
             </button>
           </div>
@@ -232,11 +232,11 @@ export function LibraryView({
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="Enter playlist name..."
                 aria-label="New playlist name"
-                className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-[#161b26] border border-[rgba(255,255,255,0.12)] text-xs text-[#f4f5f7] focus:outline-none focus:border-[#22d3a6]"
+                className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-[#161b26] border border-[rgba(255,255,255,0.12)] text-xs text-[#f4f5f7] focus:outline-none focus:border-[#a78bfa]"
               />
               <button
                 type="submit"
-                className="px-4 py-2 rounded-lg bg-[#22d3a6] text-[#042019] text-xs font-bold"
+                className="px-4 py-2 rounded-lg bg-[#7c5cff] hover:bg-[#8d70ff] text-white text-xs font-bold"
               >
                 Create
               </button>
@@ -249,7 +249,7 @@ export function LibraryView({
                 key={pl.id}
                 type="button"
                 onClick={() => onSelectPlaylist(pl.id)}
-                className="rv-interactive-btn group text-left p-2.5 rounded-xl bg-[#10131b] border border-[rgba(255,255,255,0.08)] hover:border-[rgba(34,211,166,0.4)]"
+                className="rv-interactive-btn group text-left p-2.5 rounded-xl bg-[#10131b] border border-[rgba(255,255,255,0.08)] hover:border-[rgba(167,139,250,0.45)]"
               >
                 <div className="aspect-square rounded-lg overflow-hidden bg-[#181d29]">
                   <img
@@ -277,7 +277,7 @@ export function LibraryView({
               <button
                 type="button"
                 onClick={() => onPlayTrack(likedTracks[0]!, likedTracks)}
-                className="rv-interactive-btn px-3.5 py-1.5 rounded-lg bg-[#22d3a6] text-[#042019] text-xs font-bold inline-flex items-center gap-1.5"
+                className="rv-interactive-btn px-3.5 py-1.5 rounded-full bg-[#7c5cff] hover:bg-[#8d70ff] text-white text-xs font-bold inline-flex items-center gap-1.5"
               >
                 <Play className="w-3.5 h-3.5 fill-current" aria-hidden="true" />
                 Play Liked Songs

@@ -227,6 +227,9 @@ describe('RiVibe App UI, Navigation & Queue Workflow', () => {
 
     await user.click(within(studioDialog).getByRole('button', { name: /playlist options/i }));
     expect(within(studioDialog).getByText(/add to playlist/i)).toBeInTheDocument();
+    expect(within(studioDialog).getByText(/sleep timer/i)).toBeInTheDocument();
+    await user.click(within(studioDialog).getByRole('button', { name: /^15m$/i }));
+    expect(within(studioDialog).getByRole('button', { name: /^15m$/i })).toBeInTheDocument();
 
     await user.click(within(studioDialog).getByRole('tab', { name: /lyrics/i }));
     expect(await within(studioDialog).findByText(/Look at the stars/i)).toBeInTheDocument();
@@ -237,6 +240,12 @@ describe('RiVibe App UI, Navigation & Queue Workflow', () => {
       },
     });
     expect(results.violations).toEqual([]);
+
+    // Tapping artist name directly from Now Playing opens Know About Artist modal
+    const artistCreditBtn = within(studioDialog).getByRole('button', { name: /know about/i });
+    await user.click(artistCreditBtn);
+    const artistModal = await screen.findByRole('dialog', { name: /artist information for/i });
+    await user.click(within(artistModal).getByRole('button', { name: /close artist info/i }));
 
     await user.click(within(studioDialog).getByRole('button', { name: /close now playing/i }));
 

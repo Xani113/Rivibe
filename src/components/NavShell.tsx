@@ -102,11 +102,11 @@ export function NavShell({
                 {active ? (
                   <span
                     aria-hidden="true"
-                    className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full bg-[#22d3a6]"
+                    className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full bg-[#7c5cff]"
                   />
                 ) : null}
                 <Icon
-                  className={`w-4 h-4 shrink-0 ${active ? 'text-[#22d3a6]' : ''}`}
+                  className={`w-4 h-4 shrink-0 ${active ? 'text-[#a78bfa]' : ''}`}
                   aria-hidden="true"
                 />
                 <span className="rv-sidebar-label truncate">{label}</span>
@@ -122,7 +122,7 @@ export function NavShell({
             onClick={onToggleQueue}
             className={`rv-interactive-btn w-full h-10 px-3 rounded-lg flex items-center justify-between gap-2 text-[13.5px] font-medium ${
               queueOpen
-                ? 'bg-[rgba(34,211,166,0.14)] text-[#22d3a6]'
+                ? 'bg-[rgba(124,92,255,0.16)] text-[#a78bfa]'
                 : 'text-[rgba(244,245,247,0.62)] hover:text-[#f4f5f7] hover:bg-[rgba(255,255,255,0.05)]'
             }`}
           >
@@ -161,11 +161,11 @@ export function NavShell({
                 onChange={(e) => setDraftName(e.target.value)}
                 placeholder="Playlist name..."
                 aria-label="Playlist name"
-                className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-[#161b26] border border-[rgba(255,255,255,0.12)] text-xs text-[#f4f5f7] placeholder:text-[rgba(244,245,247,0.4)] focus:outline-none focus:border-[#22d3a6]"
+                className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-[#161b26] border border-[rgba(255,255,255,0.12)] text-xs text-[#f4f5f7] placeholder:text-[rgba(244,245,247,0.4)] focus:outline-none focus:border-[#a78bfa]"
               />
               <button
                 type="submit"
-                className="px-2.5 py-1.5 rounded-lg bg-[#22d3a6] text-[#042019] text-xs font-semibold"
+                className="px-2.5 py-1.5 rounded-lg bg-[#7c5cff] hover:bg-[#8d70ff] text-white text-xs font-semibold"
               >
                 Create
               </button>
@@ -251,7 +251,7 @@ export function NavShell({
               aria-current={active ? 'page' : undefined}
               onClick={() => onSelectTab(id)}
               className={`rv-interactive-btn flex-1 h-11 rounded-lg flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium ${
-                active ? 'text-[#22d3a6]' : 'text-[rgba(244,245,247,0.58)]'
+                active ? 'text-[#a78bfa]' : 'text-[rgba(244,245,247,0.58)]'
               }`}
             >
               <Icon className="w-4 h-4" aria-hidden="true" />

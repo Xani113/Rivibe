@@ -294,8 +294,8 @@ function RiVibeStudio() {
     <div className="rv-app-shell min-h-dvh w-full bg-[#090b10] text-[#f4f5f7] flex flex-col md:flex-row">
       {/* Subtle Top Studio Ambient Glow */}
       <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -top-36 left-1/4 w-[520px] h-[360px] rounded-full bg-[rgba(34,211,166,0.08)] blur-[140px]" />
-        <div className="absolute top-0 right-10 w-[400px] h-[320px] rounded-full bg-[rgba(99,102,241,0.07)] blur-[140px]" />
+        <div className="absolute -top-36 left-1/4 w-[520px] h-[360px] rounded-full bg-[rgba(124,92,255,0.11)] blur-[140px]" />
+        <div className="absolute top-0 right-10 w-[400px] h-[320px] rounded-full bg-[rgba(192,132,252,0.07)] blur-[140px]" />
       </div>
 
       {/* Unified Desktop Sidebar + Mobile Header & 3-Tab Bottom Nav */}

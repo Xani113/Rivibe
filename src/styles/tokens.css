@@ -1,5 +1,5 @@
 :root {
-  /* RiVibe Sonic Slate — Deep Obsidian & Electric Mint System */
+  /* RiVibe Sonic Slate — Deep Obsidian & Luminous Studio Iris System */
   --rv-bg-canvas: #090b10;
   --rv-bg-surface: #0f131b;
   --rv-bg-elevated: #161b26;
@@ -16,10 +16,11 @@
   --rv-text-secondary: rgba(244, 245, 247, 0.68);
   --rv-text-muted: rgba(244, 245, 247, 0.45);
 
-  /* Electric Mint & Sonic Violet Accents */
-  --rv-accent: #22d3a6;
-  --rv-accent-ink: #042019;
-  --rv-accent-soft: rgba(34, 211, 166, 0.14);
+  /* Electric Studio Iris & Violet Accents */
+  --rv-accent: #7c5cff;
+  --rv-accent-bright: #a78bfa;
+  --rv-accent-ink: #ffffff;
+  --rv-accent-soft: rgba(124, 92, 255, 0.16);
   --rv-coral: #f87171;
 
   /* Safe areas for mobile PWA & Capacitor */

@@ -242,7 +242,7 @@ export function YouTubeAudioBridge({
     >
       <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-[#090b10]/85">
         <span className="flex items-center gap-1.5 text-[11px] font-medium text-[#f4f5f7] truncate max-w-[165px]">
-          <PlayCircle className="w-3.5 h-3.5 text-[#22d3a6] shrink-0" aria-hidden="true" />
+          <PlayCircle className="w-3.5 h-3.5 text-[#a78bfa] shrink-0" aria-hidden="true" />
           <span className="truncate">{trackTitle || 'Full Song'}</span>
         </span>
         <button

@@ -78,7 +78,7 @@ export function SearchView({
             onChange={(e) => onQueryChange(e.target.value)}
             placeholder="Search songs, artists, albums..."
             aria-label="Search songs, artists, albums"
-            className="w-full h-11 pl-10 pr-10 rounded-xl bg-[#10131b] border border-[rgba(255,255,255,0.1)] text-sm text-[#f4f5f7] placeholder:text-[rgba(244,245,247,0.45)] focus:outline-none focus:border-[#22d3a6]"
+            className="w-full h-11 pl-10 pr-10 rounded-xl bg-[#10131b] border border-[rgba(255,255,255,0.1)] text-sm text-[#f4f5f7] placeholder:text-[rgba(244,245,247,0.45)] focus:outline-none focus:border-[#a78bfa]"
           />
           {hasQuery ? (
             <button
@@ -179,7 +179,7 @@ export function SearchView({
 
           <section aria-label="Suggested searches" className="space-y-2.5">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-[rgba(244,245,247,0.5)] flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-[#22d3a6]" aria-hidden="true" />
+              <Sparkles className="w-3.5 h-3.5 text-[#a78bfa]" aria-hidden="true" />
               Browse by Vibe & Artist
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
@@ -188,7 +188,7 @@ export function SearchView({
                   key={term}
                   type="button"
                   onClick={() => onQueryChange(term)}
-                  className="rv-interactive-btn p-3.5 rounded-xl bg-[#10131b] hover:bg-[#161b26] border border-[rgba(255,255,255,0.08)] hover:border-[rgba(34,211,166,0.35)] text-left"
+                  className="rv-interactive-btn p-3.5 rounded-xl bg-[#10131b] hover:bg-[#161b26] border border-[rgba(255,255,255,0.08)] hover:border-[rgba(167,139,250,0.42)] text-left"
                 >
                   <div className="text-sm font-semibold text-[#f4f5f7]">{term}</div>
                   <div className="text-[11px] text-[rgba(244,245,247,0.5)] mt-0.5">

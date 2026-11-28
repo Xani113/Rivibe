@@ -22,6 +22,8 @@ import { buildTrackRadioQueue, rankRecommendations } from '../engine/vibeEngine'
 import { SEED_TRACKS } from '../services/seedCatalog';
 import { loadSavedQueue, saveQueueState } from '../services/storage';
 
+export type SleepTimerMode = 'off' | '15m' | '30m' | '60m';
+
 interface PlayerContextValue {
   currentTrack: Track | null;
   activeYoutubeVideoId: string | null;
@@ -36,11 +38,13 @@ interface PlayerContextValue {
   shuffle: boolean;
   repeatMode: RepeatMode;
   infiniteRadio: boolean;
+  sleepTimerMode: SleepTimerMode;
   playbackNotice: string | null;
   queueToast: string | null;
   lyrics: LyricsResult | null;
   isLoadingLyrics: boolean;
   setInfiniteRadio: (enabled: boolean) => void;
+  setSleepTimer: (mode: SleepTimerMode) => void;
   toggleShuffle: () => void;
   cycleRepeatMode: () => void;
   playTrack: (
@@ -91,6 +95,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const switchingTrackRef = useRef(false);
   const playRequestSeqRef = useRef(0);
   const toastTimerRef = useRef<number | null>(null);
+  const sleepTimerRef = useRef<number | null>(null);
   const isRadioSessionRef = useRef(true);
   const topUpLockRef = useRef<{ trackId: string; ts: number }>({ trackId: '', ts: 0 });
 
@@ -119,6 +124,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [shuffle, setShuffle] = useState(false);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
   const [infiniteRadio, setInfiniteRadio] = useState(true);
+  const [sleepTimerMode, setSleepTimerMode] = useState<SleepTimerMode>('off');
   const [playbackNotice, setPlaybackNotice] = useState<string | null>(null);
   const [queueToast, setQueueToast] = useState<string | null>(null);
   const [lyrics, setLyrics] = useState<LyricsResult | null>(null);
@@ -1297,6 +1303,43 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
   }, [currentTrack]);
 
+  const setSleepTimer = useCallback(
+    (mode: SleepTimerMode) => {
+      if (sleepTimerRef.current) {
+        window.clearTimeout(sleepTimerRef.current);
+        sleepTimerRef.current = null;
+      }
+      setSleepTimerMode(mode);
+      if (mode === 'off') {
+        showQueueToast('Sleep timer turned off');
+        return;
+      }
+      const minutes = mode === '15m' ? 15 : mode === '30m' ? 30 : 60;
+      showQueueToast(`Sleep timer set for ${minutes} minutes`);
+      sleepTimerRef.current = window.setTimeout(() => {
+        sleepTimerRef.current = null;
+        setSleepTimerMode('off');
+        const nativePlugin = getNativeMusicPlugin();
+        if (activeNativeRef.current && nativePlugin) {
+          void nativePlugin.pause();
+        } else if (!stateRef.current.activeYoutubeVideoId) {
+          getAudio().pause();
+        }
+        switchingTrackRef.current = false;
+        stateRef.current.isPlaying = false;
+        setIsPlaying(false);
+        showQueueToast('Sleep timer finished — playback paused');
+      }, minutes * 60 * 1000);
+    },
+    [getAudio, showQueueToast],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (sleepTimerRef.current) window.clearTimeout(sleepTimerRef.current);
+    };
+  }, []);
+
   const value = useMemo<PlayerContextValue>(
     () => ({
       currentTrack,
@@ -1312,11 +1355,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       shuffle,
       repeatMode,
       infiniteRadio,
+      sleepTimerMode,
       playbackNotice,
       queueToast,
       lyrics,
       isLoadingLyrics,
       setInfiniteRadio,
+      setSleepTimer,
       toggleShuffle,
       cycleRepeatMode,
       playTrack,
@@ -1355,10 +1400,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       shuffle,
       repeatMode,
       infiniteRadio,
+      sleepTimerMode,
       playbackNotice,
       queueToast,
       lyrics,
       isLoadingLyrics,
+      setSleepTimer,
       toggleShuffle,
       cycleRepeatMode,
       playTrack,

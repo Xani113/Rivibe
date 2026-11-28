@@ -141,7 +141,7 @@ export function ArtistInfoModal() {
                   onClick={() => setSelectedArtist(name)}
                   className={`rv-interactive-btn shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border ${
                     selected
-                      ? 'bg-[#22d3a6] text-[#042019] border-[#22d3a6]'
+                      ? 'bg-[#7c5cff] text-white border-[#7c5cff]'
                       : 'bg-[#161b26] text-[rgba(244,245,247,0.75)] border-[rgba(255,255,255,0.1)] hover:text-[#f4f5f7]'
                   }`}
                 >
@@ -162,7 +162,7 @@ export function ArtistInfoModal() {
               className="w-20 h-20 rounded-xl object-cover bg-[#181d29] shrink-0"
             />
             <div className="min-w-0 flex-1 space-y-1">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-[#22d3a6] truncate">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-[#a78bfa] truncate">
                 {profile?.subtitle || 'Artist'}
               </div>
               <h3 className="text-lg font-bold text-[#f4f5f7] truncate">{selectedArtist}</h3>
@@ -203,7 +203,7 @@ export function ArtistInfoModal() {
           <div className="space-y-2.5">
             <div className="flex items-center justify-between gap-2">
               <h4 className="text-xs font-bold uppercase tracking-wider text-[rgba(244,245,247,0.52)] flex items-center gap-1.5">
-                <Disc3 className="w-3.5 h-3.5 text-[#22d3a6]" aria-hidden="true" />
+                <Disc3 className="w-3.5 h-3.5 text-[#a78bfa]" aria-hidden="true" />
                 Top & Related Tracks ({topTracks.length})
               </h4>
               {topTracks.length > 0 ? (
@@ -211,7 +211,7 @@ export function ArtistInfoModal() {
                   <button
                     type="button"
                     onClick={() => void playTrack(topTracks[0]!, topTracks, { appendSimilar: true })}
-                    className="rv-interactive-btn px-2.5 py-1 rounded-lg bg-[#22d3a6] text-[#042019] text-[11px] font-bold inline-flex items-center gap-1"
+                    className="rv-interactive-btn px-2.5 py-1 rounded-lg bg-[#7c5cff] hover:bg-[#8d70ff] text-white text-[11px] font-bold inline-flex items-center gap-1"
                   >
                     <Play className="w-3 h-3 fill-current" aria-hidden="true" />
                     Play
@@ -221,7 +221,7 @@ export function ArtistInfoModal() {
                     onClick={() => void startTrackRadio(topTracks[0]!)}
                     className="rv-interactive-btn px-2.5 py-1 rounded-lg bg-[#161b26] border border-[rgba(255,255,255,0.1)] text-[11px] font-semibold text-[#f4f5f7] inline-flex items-center gap-1"
                   >
-                    <Sparkles className="w-3 h-3 text-[#22d3a6]" aria-hidden="true" />
+                    <Sparkles className="w-3 h-3 text-[#a78bfa]" aria-hidden="true" />
                     Radio
                   </button>
                 </div>

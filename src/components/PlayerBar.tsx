@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import {
   Heart,
   Mic2,
@@ -15,6 +16,7 @@ import { usePlayer } from '../context/PlayerContext';
 import { useLibrary } from '../context/LibraryContext';
 import { useKeyboardOpen } from '../hooks/useKeyboardOpen';
 import { formatDuration } from '../utils/formatTime';
+import { useTrackTint } from '../utils/dominantColor';
 import { SEED_TRACKS } from '../services/seedCatalog';
 
 const FALLBACK_ART = SEED_TRACKS[0]?.artworkUrl ?? '';
@@ -50,9 +52,34 @@ export function PlayerBar({ onOpenSheet }: PlayerBarProps) {
   } = usePlayer();
   const { tasteProfile, toggleLike } = useLibrary();
 
+  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const suppressOpenClickRef = useRef(false);
+  const activeTint = useTrackTint(currentTrack);
+
   const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
   const liked = currentTrack ? tasteProfile.likedTrackIds.includes(currentTrack.id) : false;
   const keyboardOpen = useKeyboardOpen();
+
+  const handleTrackSwipeDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    swipeStartRef.current = { x: e.clientX, y: e.clientY };
+    suppressOpenClickRef.current = false;
+  };
+
+  const handleTrackSwipeUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    const start = swipeStartRef.current;
+    swipeStartRef.current = null;
+    if (!start) return;
+    const dx = e.clientX - start.x;
+    const dy = Math.abs(e.clientY - start.y);
+    if (Math.abs(dx) > 48 && Math.abs(dx) > dy * 1.3) {
+      suppressOpenClickRef.current = true;
+      if (dx < 0) {
+        void nextTrack(true);
+      } else {
+        void prevTrack();
+      }
+    }
+  };
 
   return (
     <div
@@ -70,7 +97,7 @@ export function PlayerBar({ onOpenSheet }: PlayerBarProps) {
         >
           <span
             className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-              queueToast ? 'bg-[#22d3a6]' : 'bg-[#f87171]'
+              queueToast ? 'bg-[#a78bfa]' : 'bg-[#f87171]'
             }`}
           />
           <span className="truncate">{queueToast ?? playbackNotice}</span>
@@ -84,10 +111,25 @@ export function PlayerBar({ onOpenSheet }: PlayerBarProps) {
         </div>
       ) : null}
 
-      <div className="rv-glass-bar border-t relative">
+      <div
+        style={{
+          borderColor: activeTint.cardBorder,
+        }}
+        className="rv-glass-bar border-t relative max-md:mx-2 max-md:mb-1.5 max-md:rounded-2xl max-md:border max-md:overflow-hidden max-md:shadow-[0_12px_32px_rgba(0,0,0,0.55)]"
+      >
+        {/* Subtle Album-Tinted Ambient Wash */}
+        <div
+          aria-hidden="true"
+          style={{ backgroundColor: activeTint.cardBg }}
+          className="pointer-events-none absolute inset-0 opacity-45"
+        />
+
         {/* Top Edge Seek Scrubber */}
-        <div className="relative h-1 w-full bg-[rgba(255,255,255,0.08)] group hover:h-1.5 transition-all">
-          <div className="h-full bg-[#22d3a6]" style={{ width: `${progress}%` }} />
+        <div className="relative z-10 h-1 w-full bg-[rgba(255,255,255,0.1)] group hover:h-1.5 transition-all">
+          <div
+            className="h-full transition-[width] duration-150"
+            style={{ width: `${progress}%`, backgroundColor: activeTint.accentHex || '#a78bfa' }}
+          />
           <input
             type="range"
             min={0}
@@ -99,14 +141,24 @@ export function PlayerBar({ onOpenSheet }: PlayerBarProps) {
           />
         </div>
 
-        <div className="px-2.5 sm:px-5 h-[66px] md:h-[78px] flex items-center justify-between gap-2 sm:gap-3">
-          {/* Track Info */}
-          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1 md:flex-initial md:w-[30%]">
+        <div className="relative z-10 px-2.5 sm:px-5 h-[64px] md:h-[78px] flex items-center justify-between gap-2 sm:gap-3">
+          {/* Track Info (Swipe Horizontal on Mobile to Skip Prev/Next) */}
+          <div
+            onPointerDown={handleTrackSwipeDown}
+            onPointerUp={handleTrackSwipeUp}
+            className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1 md:flex-initial md:w-[30%] touch-pan-y"
+          >
             <button
               type="button"
               aria-label="Open now playing artwork view"
-              onClick={() => onOpenSheet('queue')}
-              className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 rounded-lg overflow-hidden bg-[#161b26] shrink-0 focus-visible:outline-2 focus-visible:outline-[#22d3a6]"
+              onClick={() => {
+                if (suppressOpenClickRef.current) {
+                  suppressOpenClickRef.current = false;
+                  return;
+                }
+                onOpenSheet('queue');
+              }}
+              className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 rounded-lg overflow-hidden bg-[#161b26] shrink-0 focus-visible:outline-2 focus-visible:outline-[#a78bfa]"
             >
               <img
                 src={currentTrack?.artworkUrl || FALLBACK_ART}
@@ -119,15 +171,21 @@ export function PlayerBar({ onOpenSheet }: PlayerBarProps) {
               <button
                 type="button"
                 aria-label="Open now playing details"
-                onClick={() => onOpenSheet('queue')}
+                onClick={() => {
+                  if (suppressOpenClickRef.current) {
+                    suppressOpenClickRef.current = false;
+                    return;
+                  }
+                  onOpenSheet('queue');
+                }}
                 data-testid="floating-player-title"
-                className="block w-full text-left text-[13px] sm:text-[13.5px] font-semibold text-[#f4f5f7] truncate hover:text-[#22d3a6] transition-colors"
+                className="block w-full text-left text-[13px] sm:text-[13.5px] font-semibold text-[#f4f5f7] truncate hover:text-[#a78bfa] transition-colors"
               >
                 {currentTrack?.title ?? 'Nothing queued'}
               </button>
-              <div className="flex items-center gap-1.5 text-[11.5px] sm:text-xs text-[rgba(244,245,247,0.62)] truncate">
+              <div className="flex items-center gap-1.5 text-[11.5px] sm:text-xs text-[rgba(244,245,247,0.68)] truncate">
                 <span className="truncate">{currentTrack?.artist ?? 'Pick a song to play'}</span>
-                <span className="hidden sm:inline text-[11px] text-[rgba(244,245,247,0.42)] tabular-nums shrink-0">
+                <span className="hidden sm:inline text-[11px] text-[rgba(244,245,247,0.45)] tabular-nums shrink-0">
                   · {formatDuration(currentTime)} / {formatDuration(duration)}
                 </span>
               </div>
@@ -138,10 +196,10 @@ export function PlayerBar({ onOpenSheet }: PlayerBarProps) {
                 type="button"
                 aria-label={liked ? 'Unlike current track' : 'Like current track'}
                 onClick={() => toggleLike(currentTrack)}
-                className="hidden sm:flex w-8 h-8 rounded-lg hover:bg-[rgba(255,255,255,0.08)] items-center justify-center shrink-0 text-[rgba(244,245,247,0.72)]"
+                className="rv-interactive-btn flex w-8 h-8 rounded-lg hover:bg-[rgba(255,255,255,0.08)] items-center justify-center shrink-0 text-[rgba(244,245,247,0.75)]"
               >
                 <Heart
-                  className={`w-4 h-4 ${liked ? 'fill-[#22d3a6] text-[#22d3a6]' : ''}`}
+                  className={`w-4 h-4 ${liked ? 'fill-[#a78bfa] text-[#a78bfa]' : ''}`}
                   aria-hidden="true"
                 />
               </button>
@@ -157,7 +215,7 @@ export function PlayerBar({ onOpenSheet }: PlayerBarProps) {
               onClick={toggleShuffle}
               className={`hidden md:flex w-8 h-8 rounded-lg items-center justify-center transition-colors ${
                 shuffle
-                  ? 'text-[#22d3a6] bg-[rgba(34,211,166,0.12)]'
+                  ? 'text-[#a78bfa] bg-[rgba(124,92,255,0.16)]'
                   : 'text-[rgba(244,245,247,0.58)] hover:text-[#f4f5f7]'
               }`}
             >
@@ -177,7 +235,7 @@ export function PlayerBar({ onOpenSheet }: PlayerBarProps) {
               type="button"
               aria-label={isPlaying ? 'Pause' : 'Play'}
               onClick={() => void togglePlay()}
-              className="rv-interactive-btn w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#22d3a6] hover:bg-[#34e5b8] text-[#042019] flex items-center justify-center shadow-lg"
+              className="rv-interactive-btn w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#7c5cff] hover:bg-[#8d70ff] text-white flex items-center justify-center shadow-lg"
             >
               {isPlaying ? (
                 <Pause className="w-4 h-4 fill-current" aria-hidden="true" />
@@ -201,7 +259,7 @@ export function PlayerBar({ onOpenSheet }: PlayerBarProps) {
               onClick={cycleRepeatMode}
               className={`hidden md:flex w-8 h-8 rounded-lg items-center justify-center transition-colors ${
                 repeatMode !== 'off'
-                  ? 'text-[#22d3a6] bg-[rgba(34,211,166,0.12)]'
+                  ? 'text-[#a78bfa] bg-[rgba(124,92,255,0.16)]'
                   : 'text-[rgba(244,245,247,0.58)] hover:text-[#f4f5f7]'
               }`}
             >
@@ -233,7 +291,7 @@ export function PlayerBar({ onOpenSheet }: PlayerBarProps) {
                 className="w-8 h-8 rounded-lg hover:bg-[rgba(255,255,255,0.08)] flex items-center justify-center text-[rgba(244,245,247,0.72)]"
               >
                 {isMuted || volume === 0 ? (
-                  <VolumeX className="w-4 h-4" aria-hidden="true" />
+                  <VolumeX className="w-4 h-4 text-[#f87171]" aria-hidden="true" />
                 ) : (
                   <Volume2 className="w-4 h-4" aria-hidden="true" />
                 )}
@@ -246,7 +304,7 @@ export function PlayerBar({ onOpenSheet }: PlayerBarProps) {
                 value={isMuted ? 0 : volume}
                 aria-label="Volume level"
                 onChange={(e) => setVolume(Number(e.target.value))}
-                className="w-20 accent-[#22d3a6]"
+                className="w-20 accent-[#7c5cff]"
               />
             </div>
           </div>

@@ -189,7 +189,7 @@ export function QueueList({
               className="space-y-1.5"
             >
               {isFirstUpcoming ? (
-                <div className="px-2 pt-2 pb-0.5 flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.14em] text-[#22d3a6]">
+                <div className="px-2 pt-2 pb-0.5 flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.14em] text-[#a78bfa]">
                   <span>Next in Queue</span>
                   <span className="tabular-nums text-[rgba(244,245,247,0.52)]">
                     {upcomingTotal} upcoming

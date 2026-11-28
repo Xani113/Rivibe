@@ -137,7 +137,7 @@ export function TrackActionSheet() {
             onClick={handlePlayNow}
             className="rv-interactive-btn w-full px-3 py-2.5 rounded-xl text-[13px] font-medium text-[#f4f5f7] hover:bg-[rgba(255,255,255,0.07)] flex items-center gap-3 text-left"
           >
-            <Play className="w-4 h-4 text-[#22d3a6]" aria-hidden="true" />
+            <Play className="w-4 h-4 text-[#a78bfa]" aria-hidden="true" />
             <span>Play Now</span>
           </button>
 
@@ -150,7 +150,7 @@ export function TrackActionSheet() {
             }}
             className="rv-interactive-btn w-full px-3 py-2.5 rounded-xl text-[13px] font-medium text-[#f4f5f7] hover:bg-[rgba(255,255,255,0.07)] flex items-center gap-3 text-left"
           >
-            <ListPlus className="w-4 h-4 text-[#22d3a6]" aria-hidden="true" />
+            <ListPlus className="w-4 h-4 text-[#a78bfa]" aria-hidden="true" />
             <span>Play Next</span>
           </button>
 
@@ -163,7 +163,7 @@ export function TrackActionSheet() {
             }}
             className="rv-interactive-btn w-full px-3 py-2.5 rounded-xl text-[13px] font-medium text-[#f4f5f7] hover:bg-[rgba(255,255,255,0.07)] flex items-center gap-3 text-left"
           >
-            <ListEnd className="w-4 h-4 text-[#22d3a6]" aria-hidden="true" />
+            <ListEnd className="w-4 h-4 text-[#a78bfa]" aria-hidden="true" />
             <span>Add to Queue</span>
           </button>
 
@@ -221,7 +221,7 @@ export function TrackActionSheet() {
             onClick={() => openArtistInfo(track.artist, track)}
             className="rv-interactive-btn w-full px-3 py-2.5 rounded-xl text-[13px] font-medium text-[#f4f5f7] hover:bg-[rgba(255,255,255,0.07)] flex items-center gap-3 text-left"
           >
-            <UserRound className="w-4 h-4 text-[#a5b4fc]" aria-hidden="true" />
+            <UserRound className="w-4 h-4 text-[#a78bfa]" aria-hidden="true" />
             <span>Know About Artist</span>
           </button>
 
@@ -234,7 +234,7 @@ export function TrackActionSheet() {
             }}
             className="rv-interactive-btn w-full px-3 py-2.5 rounded-xl text-[13px] font-medium text-[#f4f5f7] hover:bg-[rgba(255,255,255,0.07)] flex items-center gap-3 text-left"
           >
-            <Sparkles className="w-4 h-4 text-[#22d3a6]" aria-hidden="true" />
+            <Sparkles className="w-4 h-4 text-[#a78bfa]" aria-hidden="true" />
             <span>Start Song Radio</span>
           </button>
 
@@ -263,7 +263,7 @@ export function TrackActionSheet() {
                     addTrackToPlaylist(pl.id, track);
                     closeTrackMenu();
                   }}
-                  className="w-full px-3 py-2 rounded-lg text-xs font-medium text-[rgba(244,245,247,0.88)] hover:bg-[rgba(34,211,166,0.16)] hover:text-[#22d3a6] text-left truncate"
+                  className="w-full px-3 py-2 rounded-lg text-xs font-medium text-[rgba(244,245,247,0.88)] hover:bg-[rgba(124,92,255,0.18)] hover:text-[#c4b5fd] text-left truncate"
                 >
                   {pl.name}
                 </button>

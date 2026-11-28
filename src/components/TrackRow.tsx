@@ -44,7 +44,7 @@ export function TrackRow({
       data-active={isActive}
       className={`group flex items-center gap-2.5 sm:gap-3 px-2.5 py-2 rounded-xl border transition-colors ${
         isActive
-          ? 'bg-[rgba(34,211,166,0.09)] border-[rgba(34,211,166,0.28)]'
+          ? 'bg-[rgba(124,92,255,0.12)] border-[rgba(167,139,250,0.34)]'
           : 'border-transparent hover:bg-[rgba(255,255,255,0.04)] hover:border-[rgba(255,255,255,0.07)]'
       }`}
     >
@@ -52,15 +52,15 @@ export function TrackRow({
         type="button"
         aria-label={`Play ${track.title} by ${track.artist}`}
         onClick={() => onPlay(track)}
-        className="flex items-center gap-3 flex-1 min-w-0 text-left focus-visible:outline-2 focus-visible:outline-[#22d3a6] rounded-lg"
+        className="flex items-center gap-3 flex-1 min-w-0 text-left focus-visible:outline-2 focus-visible:outline-[#a78bfa] rounded-lg"
       >
         {!compact ? (
           <span className="hidden sm:inline-flex w-6 justify-center text-xs text-[rgba(244,245,247,0.45)] tabular-nums shrink-0">
             {isActive && isPlaying ? (
               <span className="inline-flex items-end gap-0.5 h-3" aria-hidden="true">
-                <span className="w-0.5 h-full bg-[#22d3a6] rounded-full rv-eq-bar" />
-                <span className="w-0.5 h-full bg-[#22d3a6] rounded-full rv-eq-bar" />
-                <span className="w-0.5 h-full bg-[#22d3a6] rounded-full rv-eq-bar" />
+                <span className="w-0.5 h-full bg-[#a78bfa] rounded-full rv-eq-bar" />
+                <span className="w-0.5 h-full bg-[#a78bfa] rounded-full rv-eq-bar" />
+                <span className="w-0.5 h-full bg-[#a78bfa] rounded-full rv-eq-bar" />
               </span>
             ) : (
               index + 1
@@ -86,9 +86,9 @@ export function TrackRow({
           >
             {isActive && isPlaying && compact ? (
               <span className="inline-flex items-end gap-0.5 h-3.5" aria-hidden="true">
-                <span className="w-0.5 h-full bg-[#22d3a6] rounded-full rv-eq-bar" />
-                <span className="w-0.5 h-full bg-[#22d3a6] rounded-full rv-eq-bar" />
-                <span className="w-0.5 h-full bg-[#22d3a6] rounded-full rv-eq-bar" />
+                <span className="w-0.5 h-full bg-[#a78bfa] rounded-full rv-eq-bar" />
+                <span className="w-0.5 h-full bg-[#a78bfa] rounded-full rv-eq-bar" />
+                <span className="w-0.5 h-full bg-[#a78bfa] rounded-full rv-eq-bar" />
               </span>
             ) : (
               <Play className="w-4 h-4 text-white fill-current" aria-hidden="true" />
@@ -100,7 +100,7 @@ export function TrackRow({
           <div className="flex items-center gap-2">
             <span
               className={`text-[13.5px] font-semibold truncate ${
-                isActive ? 'text-[#22d3a6]' : 'text-[#f4f5f7]'
+                isActive ? 'text-[#a78bfa]' : 'text-[#f4f5f7]'
               }`}
             >
               {track.title}
@@ -120,7 +120,7 @@ export function TrackRow({
           aria-label={`Add ${track.title} to queue`}
           title="Add to queue"
           onClick={() => onAddToQueue(track)}
-          className="rv-interactive-btn w-8 h-8 rounded-lg hover:bg-[rgba(34,211,166,0.14)] flex items-center justify-center text-[rgba(244,245,247,0.68)] hover:text-[#22d3a6]"
+          className="rv-interactive-btn w-8 h-8 rounded-lg hover:bg-[rgba(124,92,255,0.16)] flex items-center justify-center text-[rgba(244,245,247,0.68)] hover:text-[#a78bfa]"
         >
           <ListPlus className="w-4 h-4" aria-hidden="true" />
         </button>
@@ -132,7 +132,7 @@ export function TrackRow({
           className="rv-interactive-btn w-8 h-8 rounded-lg hover:bg-[rgba(255,255,255,0.08)] flex items-center justify-center text-[rgba(244,245,247,0.68)]"
         >
           <Heart
-            className={`w-4 h-4 ${isLiked ? 'fill-[#22d3a6] text-[#22d3a6]' : ''}`}
+            className={`w-4 h-4 ${isLiked ? 'fill-[#a78bfa] text-[#a78bfa]' : ''}`}
             aria-hidden="true"
           />
         </button>

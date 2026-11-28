@@ -55,12 +55,12 @@ export function HomeView({
   const recentStrip = recentTracks.slice(0, 8);
 
   return (
-    <div className="space-y-7">
-      {/* Clean Mood Strip */}
+    <div className="space-y-6">
+      {/* Unified Pill Mood Filter Strip */}
       <div
         role="group"
         aria-label="Mood filters"
-        className="flex items-center gap-2 overflow-x-auto pb-1 rv-scroll"
+        className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar"
       >
         {MOODS.map((mood) => {
           const active = activeMood === mood.id;
@@ -70,10 +70,10 @@ export function HomeView({
               type="button"
               aria-pressed={active}
               onClick={() => onMoodChange(mood.id)}
-              className={`rv-interactive-btn shrink-0 px-3.5 py-1.5 rounded-lg text-xs font-semibold border ${
+              className={`rv-interactive-btn shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
                 active
-                  ? 'bg-[#22d3a6] text-[#042019] border-[#22d3a6]'
-                  : 'bg-[#121620] text-[rgba(244,245,247,0.75)] border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.18)] hover:text-[#f4f5f7]'
+                  ? 'bg-[#7c5cff] text-white border-[#8d70ff] shadow-[0_4px_16px_rgba(124,92,255,0.35)]'
+                  : 'bg-[#121620] text-[rgba(244,245,247,0.75)] border-[rgba(255,255,255,0.08)] hover:border-[rgba(167,139,250,0.35)] hover:text-[#f4f5f7]'
               }`}
             >
               {mood.label}
@@ -82,11 +82,11 @@ export function HomeView({
         })}
       </div>
 
-      {/* Quick Picks */}
+      {/* Quick Picks — Swipeable 4-row Carousel on Mobile, 2-col Grid on Desktop */}
       <section aria-labelledby="quick-picks-heading" className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#22d3a6]">
+            <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#a78bfa]">
               Start Listening
             </span>
             <h1 id="quick-picks-heading" className="text-lg font-bold text-[#f4f5f7] tracking-tight">
@@ -97,7 +97,7 @@ export function HomeView({
             <button
               type="button"
               onClick={() => onPlayTrack(quickPicks[0]!, tracks)}
-              className="rv-interactive-btn px-3 py-1.5 rounded-lg bg-[#121620] hover:bg-[#19202e] border border-[rgba(255,255,255,0.1)] text-xs font-semibold text-[#f4f5f7]"
+              className="rv-interactive-btn px-3.5 py-1.5 rounded-full bg-[#121620] hover:bg-[#19202e] border border-[rgba(255,255,255,0.1)] text-xs font-semibold text-[#f4f5f7]"
             >
               Play all
             </button>
@@ -111,7 +111,10 @@ export function HomeView({
             ))}
           </div>
         ) : (
-          <ul role="list" className="grid grid-cols-1 lg:grid-cols-2 gap-1.5">
+          <ul
+            role="list"
+            className="grid grid-rows-4 grid-flow-col auto-cols-[88%] sm:auto-cols-[62%] snap-x snap-mandatory overflow-x-auto no-scrollbar lg:grid-rows-none lg:grid-flow-row lg:auto-cols-auto lg:grid-cols-2 lg:overflow-visible gap-x-3 gap-y-1.5 pb-1"
+          >
             {quickPicks.map((track, idx) => (
               <TrackRow
                 key={track.id}
@@ -134,21 +137,30 @@ export function HomeView({
         )}
       </section>
 
-      {/* Keep Listening (only shown for tracks the user actually played) */}
+      {/* Keep Listening (Clean Edge-to-Edge Artwork Cards) */}
       {recentStrip.length > 0 ? (
         <section aria-labelledby="recent-heading" className="space-y-3">
           <h2 id="recent-heading" className="text-base font-bold text-[#f4f5f7] tracking-tight">
             Keep Listening
           </h2>
-          <div className="flex gap-3 overflow-x-auto pb-2 rv-scroll">
+          <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
             {recentStrip.map((track) => {
               const active = currentTrackId === track.id;
               return (
                 <div
                   key={`recent-${track.id}`}
-                  className="group w-36 sm:w-40 shrink-0 rounded-xl p-2 bg-[#10131b] border border-[rgba(255,255,255,0.07)] hover:border-[rgba(255,255,255,0.16)] transition-colors"
+                  className={`group w-36 sm:w-40 shrink-0 rounded-2xl p-2 bg-[#10131b] border transition-colors ${
+                    active
+                      ? 'border-[rgba(167,139,250,0.48)] bg-[rgba(124,92,255,0.08)]'
+                      : 'border-[rgba(255,255,255,0.07)] hover:border-[rgba(255,255,255,0.16)]'
+                  }`}
                 >
-                  <div className="relative aspect-square rounded-lg overflow-hidden bg-[#181d29]">
+                  <button
+                    type="button"
+                    aria-label={`Play ${track.title}`}
+                    onClick={() => onPlayTrack(track, recentStrip)}
+                    className="relative block w-full aspect-square rounded-xl overflow-hidden bg-[#181d29]"
+                  >
                     <img
                       src={track.artworkUrl || FALLBACK_ART}
                       alt={track.title}
@@ -157,44 +169,51 @@ export function HomeView({
                           e.currentTarget.src = FALLBACK_ART;
                         }
                       }}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                     />
-                    <div className="absolute inset-x-1.5 bottom-1.5 flex items-center justify-between gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                      <button
-                        type="button"
-                        aria-label={`Add ${track.title} to queue`}
-                        title="Add to queue"
-                        onClick={() => onAddToQueue(track)}
-                        className="w-8 h-8 rounded-lg bg-[rgba(9,11,16,0.85)] border border-[rgba(255,255,255,0.14)] text-[#f4f5f7] hover:text-[#22d3a6] flex items-center justify-center"
-                      >
-                        <ListPlus className="w-3.5 h-3.5" aria-hidden="true" />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`Play ${track.title}`}
-                        onClick={() => onPlayTrack(track, recentStrip)}
-                        className="w-8 h-8 rounded-lg bg-[#22d3a6] text-[#042019] flex items-center justify-center shadow-lg"
-                      >
-                        <Play className="w-3.5 h-3.5 fill-current ml-0.5" aria-hidden="true" />
-                      </button>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onPlayTrack(track, recentStrip)}
-                    className="mt-2 w-full text-left"
-                  >
-                    <div
-                      className={`text-xs font-semibold truncate ${
-                        active ? 'text-[#22d3a6]' : 'text-[#f4f5f7]'
+                    <span
+                      className={`absolute right-2 bottom-2 w-8 h-8 rounded-full bg-[#7c5cff] text-white flex items-center justify-center shadow-lg transition-opacity ${
+                        active ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
                       }`}
                     >
-                      {track.title}
-                    </div>
-                    <div className="text-[11px] text-[rgba(244,245,247,0.55)] truncate">
-                      {track.artist}
-                    </div>
+                      {active && isPlaying ? (
+                        <span className="inline-flex items-end gap-0.5 h-3" aria-hidden="true">
+                          <span className="w-0.5 h-full bg-white rounded-full rv-eq-bar" />
+                          <span className="w-0.5 h-full bg-white rounded-full rv-eq-bar" />
+                          <span className="w-0.5 h-full bg-white rounded-full rv-eq-bar" />
+                        </span>
+                      ) : (
+                        <Play className="w-3.5 h-3.5 fill-current ml-0.5" aria-hidden="true" />
+                      )}
+                    </span>
                   </button>
+                  <div className="mt-2 flex items-start justify-between gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onPlayTrack(track, recentStrip)}
+                      className="min-w-0 flex-1 text-left"
+                    >
+                      <div
+                        className={`text-xs font-semibold truncate ${
+                          active ? 'text-[#a78bfa]' : 'text-[#f4f5f7]'
+                        }`}
+                      >
+                        {track.title}
+                      </div>
+                      <div className="text-[11px] text-[rgba(244,245,247,0.55)] truncate">
+                        {track.artist}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Add ${track.title} to queue`}
+                      title="Add to queue"
+                      onClick={() => onAddToQueue(track)}
+                      className="rv-interactive-btn w-7 h-7 rounded-lg hover:bg-[rgba(124,92,255,0.16)] text-[rgba(244,245,247,0.56)] hover:text-[#a78bfa] flex items-center justify-center shrink-0"
+                    >
+                      <ListPlus className="w-3.5 h-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -202,7 +221,7 @@ export function HomeView({
         </section>
       ) : null}
 
-      {/* More to Explore (only additional distinct tracks beyond Quick Picks) */}
+      {/* More to Explore (Clean Edge-to-Edge Cover Artwork + Compact Title Footer Action) */}
       {moreTracks.length > 0 ? (
         <section aria-labelledby="discover-heading" className="space-y-3">
           <h2 id="discover-heading" className="text-base font-bold text-[#f4f5f7] tracking-tight">
@@ -215,13 +234,18 @@ export function HomeView({
               return (
                 <article
                   key={`card-${track.id}`}
-                  className={`group rounded-xl p-2 bg-[#10131b] border transition-colors ${
+                  className={`group rounded-2xl p-2 bg-[#10131b] border transition-colors ${
                     active
-                      ? 'border-[rgba(34,211,166,0.45)] bg-[rgba(34,211,166,0.06)]'
+                      ? 'border-[rgba(167,139,250,0.48)] bg-[rgba(124,92,255,0.08)]'
                       : 'border-[rgba(255,255,255,0.07)] hover:border-[rgba(255,255,255,0.16)]'
                   }`}
                 >
-                  <div className="relative aspect-square rounded-lg overflow-hidden bg-[#181d29]">
+                  <button
+                    type="button"
+                    aria-label={`Play ${track.title}`}
+                    onClick={() => onPlayTrack(track, tracks)}
+                    className="relative block w-full aspect-square rounded-xl overflow-hidden bg-[#181d29]"
+                  >
                     <img
                       src={track.artworkUrl || FALLBACK_ART}
                       alt={`${track.album} art`}
@@ -234,52 +258,51 @@ export function HomeView({
                       className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                     />
 
-                    <div className="absolute inset-x-1.5 bottom-1.5 flex items-center justify-between gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
-                      <button
-                        type="button"
-                        aria-label={`Add ${track.title} to queue`}
-                        title="Add to queue"
-                        onClick={() => onAddToQueue(track)}
-                        className="rv-interactive-btn w-8 h-8 rounded-lg bg-[rgba(9,11,16,0.86)] border border-[rgba(255,255,255,0.15)] text-[#f4f5f7] hover:text-[#22d3a6] flex items-center justify-center"
-                      >
-                        <ListPlus className="w-3.5 h-3.5" aria-hidden="true" />
-                      </button>
-
-                      <button
-                        type="button"
-                        aria-label={`Play ${track.title}`}
-                        onClick={() => onPlayTrack(track, tracks)}
-                        className="rv-interactive-btn w-8 h-8 rounded-lg bg-[#22d3a6] text-[#042019] flex items-center justify-center shadow-lg"
-                      >
-                        {active && isPlaying ? (
-                          <span className="inline-flex items-end gap-0.5 h-3" aria-hidden="true">
-                            <span className="w-0.5 h-full bg-[#042019] rounded-full rv-eq-bar" />
-                            <span className="w-0.5 h-full bg-[#042019] rounded-full rv-eq-bar" />
-                            <span className="w-0.5 h-full bg-[#042019] rounded-full rv-eq-bar" />
-                          </span>
-                        ) : (
-                          <Play className="w-3.5 h-3.5 fill-current ml-0.5" aria-hidden="true" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => onPlayTrack(track, tracks)}
-                    className="mt-2 w-full min-w-0 text-left"
-                  >
-                    <div
-                      className={`text-[13px] font-semibold truncate ${
-                        active ? 'text-[#22d3a6]' : 'text-[#f4f5f7]'
+                    <span
+                      className={`absolute right-2 bottom-2 w-8 h-8 rounded-full bg-[#7c5cff] text-white flex items-center justify-center shadow-lg transition-opacity ${
+                        active ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
                       }`}
                     >
-                      {track.title}
-                    </div>
-                    <div className="text-[11px] text-[rgba(244,245,247,0.56)] truncate">
-                      {track.artist}
-                    </div>
+                      {active && isPlaying ? (
+                        <span className="inline-flex items-end gap-0.5 h-3" aria-hidden="true">
+                          <span className="w-0.5 h-full bg-white rounded-full rv-eq-bar" />
+                          <span className="w-0.5 h-full bg-white rounded-full rv-eq-bar" />
+                          <span className="w-0.5 h-full bg-white rounded-full rv-eq-bar" />
+                        </span>
+                      ) : (
+                        <Play className="w-3.5 h-3.5 fill-current ml-0.5" aria-hidden="true" />
+                      )}
+                    </span>
                   </button>
+
+                  <div className="mt-2 flex items-start justify-between gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onPlayTrack(track, tracks)}
+                      className="min-w-0 flex-1 text-left"
+                    >
+                      <div
+                        className={`text-[13px] font-semibold truncate ${
+                          active ? 'text-[#a78bfa]' : 'text-[#f4f5f7]'
+                        }`}
+                      >
+                        {track.title}
+                      </div>
+                      <div className="text-[11px] text-[rgba(244,245,247,0.56)] truncate">
+                        {track.artist}
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      aria-label={`Add ${track.title} to queue`}
+                      title="Add to queue"
+                      onClick={() => onAddToQueue(track)}
+                      className="rv-interactive-btn w-7 h-7 rounded-lg hover:bg-[rgba(124,92,255,0.16)] text-[rgba(244,245,247,0.56)] hover:text-[#a78bfa] flex items-center justify-center shrink-0"
+                    >
+                      <ListPlus className="w-3.5 h-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
                 </article>
               );
             })}
